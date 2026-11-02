@@ -1,0 +1,6 @@
+@ERPES.ControlTower_HostAddress = http://localhost:5200
+
+GET {{ERPES.ControlTower_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
