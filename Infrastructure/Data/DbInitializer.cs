@@ -1,4 +1,5 @@
 using ERPES.ControlTower.Core.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace ERPES.ControlTower.Infrastructure.Data;
 
@@ -8,16 +9,16 @@ public static class DbInitializer
     {
         context.Database.EnsureCreated();
 
-        if (context.Plants.Any() && context.Workers.Count() >= 30 && context.Plants.Any(p => p.Id == 1))
+        if (context.Plants.Any())
         {
             return;
         }
 
-        if (context.Plants.Any())
-        {
-            ResetToBaseline(context);
-            return;
-        }
+        SeedBaselineData(context);
+    }
+
+    private static void SeedBaselineData(ApplicationDbContext context)
+    {
 
         var plantA = new Plant
         {
@@ -217,19 +218,30 @@ public static class DbInitializer
 
         context.OperationalKpis.Add(kpi);
         context.SaveChanges();
+
+        // Advance PostgreSQL SERIAL sequence past explicit Plant IDs (1, 2, 3)
+        if (context.Database.IsNpgsql())
+        {
+            context.Database.ExecuteSqlRaw(
+                "SELECT setval(pg_get_serial_sequence('\"Plants\"', 'Id'), COALESCE((SELECT MAX(\"Id\") FROM \"Plants\"), 1));");
+        }
     }
 
     public static void ResetToBaseline(ApplicationDbContext context)
     {
-        context.MaterialTransferOrders.RemoveRange(context.MaterialTransferOrders);
-        context.WorkerTransferOrders.RemoveRange(context.WorkerTransferOrders);
-        context.ExternalTelemetryAlerts.RemoveRange(context.ExternalTelemetryAlerts);
-        context.Workers.RemoveRange(context.Workers);
-        context.InventoryItems.RemoveRange(context.InventoryItems);
-        context.Plants.RemoveRange(context.Plants);
-        context.OperationalKpis.RemoveRange(context.OperationalKpis);
-        context.SaveChanges();
+        using var transaction = context.Database.BeginTransaction();
 
-        Initialize(context);
+        // Delete child/dependent tables first before parent Plants
+        context.ExternalTelemetryAlerts.ExecuteDelete();
+        context.WorkerTransferOrders.ExecuteDelete();
+        context.MaterialTransferOrders.ExecuteDelete();
+        context.OperationalKpis.ExecuteDelete();
+        context.Workers.ExecuteDelete();
+        context.InventoryItems.ExecuteDelete();
+        context.Plants.ExecuteDelete();
+        context.ChangeTracker.Clear();
+
+        SeedBaselineData(context);
+        transaction.Commit();
     }
 }

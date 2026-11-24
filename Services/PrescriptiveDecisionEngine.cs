@@ -1,6 +1,7 @@
 using ERPES.ControlTower.Core.DTOs;
 using ERPES.ControlTower.Core.Entities;
 using ERPES.ControlTower.Hubs;
+using ERPES.ControlTower.Infrastructure.Channels;
 using ERPES.ControlTower.Infrastructure.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -11,32 +12,36 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IHubContext<TelemetryHub> _hubContext;
+    private readonly IngestionChannel _ingestionChannel;
     private readonly ILogger<PrescriptiveDecisionEngine> _logger;
 
     public PrescriptiveDecisionEngine(
         ApplicationDbContext dbContext,
         IHubContext<TelemetryHub> hubContext,
+        IngestionChannel ingestionChannel,
         ILogger<PrescriptiveDecisionEngine> logger)
     {
         _dbContext = dbContext;
         _hubContext = hubContext;
+        _ingestionChannel = ingestionChannel;
         _logger = logger;
     }
 
     public async Task ProcessTelemetryAsync(TelemetryDto telemetry, CancellationToken cancellationToken = default)
     {
+        var eventType = telemetry.EventType ?? string.Empty;
         _logger.LogInformation("Processing incoming telemetry: Source={Source}, Event={Event}, Code={Code}",
-            telemetry.SourceType, telemetry.EventType, telemetry.TransportCode ?? telemetry.MaterialCode);
+            telemetry.SourceType, eventType, telemetry.TransportCode ?? telemetry.MaterialCode);
 
-        if (telemetry.SourceType == "MarineLogistics" || telemetry.EventType.Contains("Port") || telemetry.EventType.Contains("Customs"))
+        if (telemetry.SourceType == "MarineLogistics" || eventType.Contains("Port") || eventType.Contains("Customs"))
         {
             await HandleLogisticsDelayAsync(telemetry, cancellationToken);
         }
-        else if (telemetry.SourceType == "AirCargo" || telemetry.EventType.Contains("Flight") || telemetry.EventType.Contains("Slot") || telemetry.EventType.Contains("Technical"))
+        else if (telemetry.SourceType == "AirCargo" || eventType.Contains("Flight") || eventType.Contains("Slot") || eventType.Contains("Technical"))
         {
             await HandleAirCargoDelayAsync(telemetry, cancellationToken);
         }
-        else if (telemetry.SourceType == "Workforce" || telemetry.EventType.Contains("Worker") || telemetry.EventType.Contains("Welding") || telemetry.EventType.Contains("Quality") || telemetry.EventType.Contains("Plc"))
+        else if (telemetry.SourceType == "Workforce" || eventType.Contains("Worker") || eventType.Contains("Welding") || eventType.Contains("Quality") || eventType.Contains("Plc"))
         {
             await HandleWorkforceBottleneckAsync(telemetry, cancellationToken);
         }
@@ -51,14 +56,59 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
 
     private async Task<Plant?> ResolveTargetPlantAsync(int? requestedId, CancellationToken cancellationToken)
     {
-        if (requestedId == 2)
-            return await _dbContext.Plants.Include(p => p.InventoryItems).FirstOrDefaultAsync(p => p.Id == 2 || p.Code == "PLANT-B", cancellationToken);
-        if (requestedId == 3)
-            return await _dbContext.Plants.Include(p => p.InventoryItems).FirstOrDefaultAsync(p => p.Id == 3 || p.Code == "PLANT-C", cancellationToken);
         if (requestedId.HasValue)
-            return await _dbContext.Plants.Include(p => p.InventoryItems).FirstOrDefaultAsync(p => p.Id == requestedId.Value || p.Code == "PLANT-A", cancellationToken);
+        {
+            return await _dbContext.Plants
+                .Include(p => p.InventoryItems)
+                .FirstOrDefaultAsync(p => p.Id == requestedId.Value, cancellationToken);
+        }
 
-        return await _dbContext.Plants.Include(p => p.InventoryItems).FirstOrDefaultAsync(p => p.Code == "PLANT-A", cancellationToken);
+        return await _dbContext.Plants
+            .Include(p => p.InventoryItems)
+            .FirstOrDefaultAsync(p => p.Code == "PLANT-A", cancellationToken);
+    }
+
+    private async Task RecomputePlantStatusAsync(Plant? plant, CancellationToken cancellationToken = default)
+    {
+        if (plant == null) return;
+
+        var openSeverities = await _dbContext.ExternalTelemetryAlerts
+            .Where(a => !a.IsResolved && a.TargetPlantId == plant.Id)
+            .Select(a => a.Severity)
+            .ToListAsync(cancellationToken);
+
+        if (openSeverities.Any(s => string.Equals(s, "Critical", StringComparison.OrdinalIgnoreCase)))
+        {
+            plant.Status = "Critical";
+        }
+        else if (openSeverities.Count > 0)
+        {
+            plant.Status = "Warning";
+        }
+        else
+        {
+            plant.Status = "Normal";
+        }
+    }
+
+    private async Task RecalculateOperationalKpisAsync(OperationalKpi kpi, CancellationToken cancellationToken = default)
+    {
+        var allPlants = await _dbContext.Plants.ToListAsync(cancellationToken);
+        if (allPlants.Count > 0)
+        {
+            double maxCap = allPlants.Max(p => p.ActiveCapacityPercent);
+            double minCap = allPlants.Min(p => p.ActiveCapacityPercent);
+            kpi.MultiPlantWorkloadVariance = Math.Round(maxCap - minCap, 1);
+        }
+
+        var allInventory = await _dbContext.InventoryItems.ToListAsync(cancellationToken);
+        if (allInventory.Count > 0)
+        {
+            kpi.AverageTimeToSurviveDays = Math.Round(allInventory.Min(i => i.TimeToSurviveDays), 1);
+        }
+
+        kpi.ActiveCrisisCount = await _dbContext.ExternalTelemetryAlerts.CountAsync(a => !a.IsResolved, cancellationToken);
+        kpi.UpdatedAt = DateTime.UtcNow;
     }
 
     private async Task HandleLogisticsDelayAsync(TelemetryDto telemetry, CancellationToken cancellationToken)
@@ -158,7 +208,11 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
             .OrderByDescending(i => i.Quantity)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var donorPlant = donorInventory?.Plant ?? await _dbContext.Plants.FirstOrDefaultAsync(p => p.Code == "PLANT-C", cancellationToken);
+        var donorPlant = donorInventory?.Plant
+            ?? await _dbContext.Plants
+                .Where(p => p.Id != targetPlant.Id)
+                .OrderByDescending(p => p.Code == "PLANT-C")
+                .FirstOrDefaultAsync(cancellationToken);
         if (donorPlant == null) return;
 
         string materialName = donorInventory?.MaterialName ?? "ADAS Ön LiDAR & Radar Kiti";
@@ -231,29 +285,41 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         int neededCount = telemetry.Value.HasValue ? Math.Max(1, (int)telemetry.Value.Value) : 2;
         decimal slaRisk = Random.Shared.Next(38, 64) * 1000m;
 
-        // Strict Rule: IsMobilityAccepted == true and donor plant has surplus
-        var candidateWorkers = await _dbContext.Workers
+        // Exclude workers already proposed in an open WorkerTransferOrder
+        var pendingProposedWorkerIds = await _dbContext.WorkerTransferOrders
+            .Where(o => o.Status == "Proposed")
+            .Select(o => o.WorkerId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        // Strict Rule: IsMobilityAccepted == true, Status == "Active", and donor plant has surplus
+        var primaryPool = await _dbContext.Workers
             .Include(w => w.CurrentPlant)
             .Where(w => w.CurrentPlantId != targetPlant.Id)
+            .Where(w => !pendingProposedWorkerIds.Contains(w.Id))
             .Where(w => w.IsMobilityAccepted == true && w.Status == "Active")
             .Where(w => w.CurrentPlant != null && w.CurrentPlant.CurrentWorkerCount > w.CurrentPlant.RequiredWorkerCount)
             .Where(w => w.RoleOrSkill.Contains(requiredSkill))
             .OrderBy(w => w.MobilityAllowanceRate)
             .ThenByDescending(w => w.SkillScore)
-            .Take(neededCount)
             .ToListAsync(cancellationToken);
 
-        // Fallback if specific role exhausted: pick any eligible rotational worker with surplus
+        var candidateWorkers = SelectRespectingDonorSurplus(primaryPool, neededCount);
+
+        // Fallback if specific role exhausted: still strictly enforce IsMobilityAccepted, Active, and donor surplus
         if (!candidateWorkers.Any())
         {
-            candidateWorkers = await _dbContext.Workers
+            var fallbackPool = await _dbContext.Workers
                 .Include(w => w.CurrentPlant)
                 .Where(w => w.CurrentPlantId != targetPlant.Id)
+                .Where(w => !pendingProposedWorkerIds.Contains(w.Id))
                 .Where(w => w.IsMobilityAccepted == true && w.Status == "Active")
+                .Where(w => w.CurrentPlant != null && w.CurrentPlant.CurrentWorkerCount > w.CurrentPlant.RequiredWorkerCount)
                 .OrderBy(w => w.MobilityAllowanceRate)
                 .ThenByDescending(w => w.SkillScore)
-                .Take(neededCount)
                 .ToListAsync(cancellationToken);
+
+            candidateWorkers = SelectRespectingDonorSurplus(fallbackPool, neededCount);
         }
 
         if (!candidateWorkers.Any()) return;
@@ -299,18 +365,17 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         };
 
         targetPlant.Status = "Warning";
-        targetPlant.ActiveCapacityPercent = Math.Min(124.0, targetPlant.ActiveCapacityPercent + 11.5);
+        targetPlant.ActiveCapacityPercent = Math.Round(Math.Min(124.0, targetPlant.ActiveCapacityPercent + 11.5), 1);
         _dbContext.ExternalTelemetryAlerts.Add(alert);
+        await _dbContext.SaveChangesAsync(cancellationToken);
 
         var kpi = await _dbContext.OperationalKpis.FirstOrDefaultAsync(cancellationToken);
         if (kpi != null)
         {
-            kpi.ActiveCrisisCount = await _dbContext.ExternalTelemetryAlerts.CountAsync(a => !a.IsResolved, cancellationToken) + 1;
-            kpi.MultiPlantWorkloadVariance = 52.0;
-            kpi.UpdatedAt = DateTime.UtcNow;
+            await RecalculateOperationalKpisAsync(kpi, cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
         await _hubContext.Clients.All.SendAsync("ReceiveTelemetryAlert", alert, cancellationToken);
     }
 
@@ -334,6 +399,30 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         await _hubContext.Clients.All.SendAsync("ReceiveTelemetryAlert", alert, cancellationToken);
     }
 
+    private static List<Worker> SelectRespectingDonorSurplus(List<Worker> orderedCandidates, int neededCount)
+    {
+        var selected = new List<Worker>();
+        var remainingSurplusByPlant = new Dictionary<int, int>();
+
+        foreach (var worker in orderedCandidates)
+        {
+            if (selected.Count >= neededCount) break;
+            if (worker.CurrentPlant == null) continue;
+
+            if (!remainingSurplusByPlant.TryGetValue(worker.CurrentPlantId, out int surplus))
+            {
+                surplus = worker.CurrentPlant.CurrentWorkerCount - worker.CurrentPlant.RequiredWorkerCount;
+            }
+
+            if (surplus <= 0) continue;
+
+            remainingSurplusByPlant[worker.CurrentPlantId] = surplus - 1;
+            selected.Add(worker);
+        }
+
+        return selected;
+    }
+
     public async Task<MaterialTransferOrder?> ApproveMaterialTransferAsync(int orderId, string approvedBy)
     {
         var order = await _dbContext.MaterialTransferOrders
@@ -352,18 +441,25 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         var targetStock = await _dbContext.InventoryItems
             .FirstOrDefaultAsync(i => i.PlantId == order.ToPlantId && i.MaterialCode == order.MaterialCode);
 
+        // Transfer only available donor stock so phantom inventory is never created
+        double actualQty = donorStock != null
+            ? Math.Min(donorStock.Quantity, order.Quantity)
+            : order.Quantity;
+        order.Quantity = actualQty;
+
         if (donorStock != null)
         {
-            donorStock.Quantity = Math.Max(0, donorStock.Quantity - order.Quantity);
+            donorStock.Quantity = Math.Max(0, donorStock.Quantity - actualQty);
         }
 
         if (targetStock != null)
         {
-            targetStock.Quantity += order.Quantity;
+            targetStock.Quantity += actualQty;
         }
 
         var alerts = await _dbContext.ExternalTelemetryAlerts
-            .Where(a => a.AssociatedMaterialTransferOrderId == order.Id || (!a.IsResolved && a.MaterialCode == order.MaterialCode))
+            .Where(a => a.AssociatedMaterialTransferOrderId == order.Id ||
+                        (!a.IsResolved && a.MaterialCode == order.MaterialCode && a.TargetPlantId == order.ToPlantId))
             .ToListAsync();
 
         foreach (var a in alerts)
@@ -371,10 +467,13 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
             a.IsResolved = true;
         }
 
+        await _dbContext.SaveChangesAsync();
+
         var targetPlant = await _dbContext.Plants.FindAsync(order.ToPlantId);
         if (targetPlant != null)
         {
-            targetPlant.Status = "Normal";
+            targetPlant.ActiveCapacityPercent = Math.Round(Math.Max(65.0, targetPlant.ActiveCapacityPercent - 4.0), 1);
+            await RecomputePlantStatusAsync(targetPlant);
         }
 
         var kpi = await _dbContext.OperationalKpis.FirstOrDefaultAsync();
@@ -382,13 +481,8 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         {
             kpi.TotalAvoidedPenaltyEur += order.PreventedPenaltyAmount;
             kpi.TotalEmergencyLogisticsCostEur += order.EstimatedCost;
-            kpi.ActiveCrisisCount = await _dbContext.ExternalTelemetryAlerts.CountAsync(a => !a.IsResolved);
-            kpi.OtifPercent = 99.1;
-            if (targetStock != null)
-            {
-                kpi.AverageTimeToSurviveDays = targetStock.TimeToSurviveDays;
-            }
-            kpi.UpdatedAt = DateTime.UtcNow;
+            await RecalculateOperationalKpisAsync(kpi);
+            kpi.OtifPercent = kpi.ActiveCrisisCount == 0 ? 99.1 : 95.4;
         }
 
         await _dbContext.SaveChangesAsync();
@@ -419,6 +513,7 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
             .FirstOrDefaultAsync(o => o.Id == orderId);
 
         if (clickedOrder == null) return null;
+        if (clickedOrder.Status != "Proposed") return clickedOrder;
 
         var proposedOrders = await _dbContext.WorkerTransferOrders
             .Include(o => o.Worker)
@@ -433,35 +528,42 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
         decimal batchCost = 0;
         int transferredCount = 0;
         var workerNames = new List<string>();
+        var activatedOrders = new List<WorkerTransferOrder>();
 
-        foreach (var order in proposedOrders.Where(o => o.Status == "Proposed"))
+        foreach (var order in proposedOrders)
         {
-            order.Status = "InTransit";
-            batchPenaltyAvoided += order.PreventedPenaltyAmount;
-            batchCost += order.EstimatedCost;
-            transferredCount++;
-
-            if (order.Worker != null)
+            if (order.Worker == null ||
+                !order.Worker.IsMobilityAccepted ||
+                order.Worker.Status != "Active" ||
+                order.Worker.CurrentPlantId != order.FromPlantId)
             {
-                order.Worker.Status = "InTransit";
-                order.Worker.CurrentPlantId = order.ToPlantId;
-                workerNames.Add(order.Worker.FullName);
+                order.Status = "Cancelled";
+                continue;
             }
 
             var donorPlant = await _dbContext.Plants.FindAsync(order.FromPlantId);
             var targetPlant = await _dbContext.Plants.FindAsync(order.ToPlantId);
+            if (donorPlant == null || targetPlant == null || donorPlant.CurrentWorkerCount <= donorPlant.RequiredWorkerCount)
+            {
+                order.Status = "Cancelled";
+                continue;
+            }
 
-            if (donorPlant != null)
-            {
-                donorPlant.CurrentWorkerCount = Math.Max(0, donorPlant.CurrentWorkerCount - 1);
-                donorPlant.ActiveCapacityPercent = Math.Min(100, donorPlant.ActiveCapacityPercent + 5.0);
-            }
-            if (targetPlant != null)
-            {
-                targetPlant.CurrentWorkerCount++;
-                targetPlant.ActiveCapacityPercent = Math.Max(90.0, targetPlant.ActiveCapacityPercent - 7.5);
-                targetPlant.Status = "Normal";
-            }
+            order.Status = "InTransit";
+            batchPenaltyAvoided += order.PreventedPenaltyAmount;
+            batchCost += order.EstimatedCost;
+            transferredCount++;
+            activatedOrders.Add(order);
+
+            order.Worker.Status = "InTransit";
+            order.Worker.CurrentPlantId = order.ToPlantId;
+            workerNames.Add(order.Worker.FullName);
+
+            donorPlant.CurrentWorkerCount = Math.Max(0, donorPlant.CurrentWorkerCount - 1);
+            donorPlant.ActiveCapacityPercent = Math.Round(Math.Min(115.0, donorPlant.ActiveCapacityPercent + 5.5), 1);
+
+            targetPlant.CurrentWorkerCount++;
+            targetPlant.ActiveCapacityPercent = Math.Round(Math.Max(60.0, targetPlant.ActiveCapacityPercent - 6.5), 1);
         }
 
         var unresolvedWorkforceAlerts = await _dbContext.ExternalTelemetryAlerts
@@ -473,30 +575,39 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
             a.IsResolved = true;
         }
 
+        await _dbContext.SaveChangesAsync();
+
+        var resolvedTargetPlant = await _dbContext.Plants.FindAsync(clickedOrder.ToPlantId);
+        await RecomputePlantStatusAsync(resolvedTargetPlant);
+
         var kpi = await _dbContext.OperationalKpis.FirstOrDefaultAsync();
-        if (kpi != null && transferredCount > 0)
+        if (kpi != null)
         {
-            kpi.TotalAvoidedPenaltyEur += batchPenaltyAvoided;
-            kpi.TotalEmergencyLogisticsCostEur += batchCost;
-            kpi.MobileWorkersDeployed += transferredCount;
-            kpi.MultiPlantWorkloadVariance = 18.5;
-            kpi.ActiveCrisisCount = await _dbContext.ExternalTelemetryAlerts.CountAsync(a => !a.IsResolved);
-            kpi.UpdatedAt = DateTime.UtcNow;
+            if (transferredCount > 0)
+            {
+                kpi.TotalAvoidedPenaltyEur += batchPenaltyAvoided;
+                kpi.TotalEmergencyLogisticsCostEur += batchCost;
+                kpi.MobileWorkersDeployed += transferredCount;
+            }
+            await RecalculateOperationalKpisAsync(kpi);
         }
 
         await _dbContext.SaveChangesAsync();
 
-        string sourceCities = string.Join("/", proposedOrders.Where(o => o.Status == "InTransit").Select(o => o.FromPlant?.City ?? "Bursa").Distinct());
-        string targetCity = primaryOrder.ToPlant?.City ?? "Kocaeli";
-
-        await _hubContext.Clients.All.SendAsync("ReceiveActionApproved", new
+        if (transferredCount > 0)
         {
-            ActionType = "WorkerTransfer",
-            OrderId = primaryOrder.Id,
-            Status = "InTransit",
-            Message = $"✅ Personel Görevlendirme Onaylandı: {string.Join(", ", workerNames)} ({sourceCities} ➔ {targetCity}) hattında sevk edildi!",
-            ApprovedBy = approvedBy
-        });
+            string sourceCities = string.Join("/", activatedOrders.Select(o => o.FromPlant?.City ?? "Bursa").Distinct());
+            string targetCity = primaryOrder.ToPlant?.City ?? "Kocaeli";
+
+            await _hubContext.Clients.All.SendAsync("ReceiveActionApproved", new
+            {
+                ActionType = "WorkerTransfer",
+                OrderId = primaryOrder.Id,
+                Status = "InTransit",
+                Message = $"✅ Personel Görevlendirme Onaylandı: {string.Join(", ", workerNames)} ({sourceCities} ➔ {targetCity}) hattında sevk edildi!",
+                ApprovedBy = approvedBy
+            });
+        }
 
         var state = await GetDashboardStateAsync();
         await _hubContext.Clients.All.SendAsync("ReceiveStateUpdate", state);
@@ -552,7 +663,17 @@ public class PrescriptiveDecisionEngine : IPrescriptiveDecisionEngine
 
     public async Task ResetStateAsync()
     {
-        DbInitializer.ResetToBaseline(_dbContext);
+        await _ingestionChannel.ProcessingLock.WaitAsync();
+        try
+        {
+            _ingestionChannel.DrainPending();
+            DbInitializer.ResetToBaseline(_dbContext);
+        }
+        finally
+        {
+            _ingestionChannel.ProcessingLock.Release();
+        }
+
         var state = await GetDashboardStateAsync();
         await _hubContext.Clients.All.SendAsync("ReceiveStateUpdate", state);
     }

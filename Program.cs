@@ -37,12 +37,19 @@ builder.Services.AddSingleton(ingestionChannel);
 builder.Services.AddSingleton(ingestionChannel.Writer);
 builder.Services.AddSingleton(ingestionChannel.Reader);
 
-// 4. SignalR Real-Time Broadcast Engine
-builder.Services.AddSignalR();
+// 4. SignalR Real-Time Broadcast Engine (match controller cycle-safe JSON serializer settings)
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.PayloadSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
 // 5. Domain Services & Background Queue Consumer
-builder.Services.AddHttpClient<LogisticsRadarService>();
-builder.Services.AddSingleton<LogisticsRadarService>();
+builder.Services.AddHttpClient<LogisticsRadarService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(4);
+});
 builder.Services.AddScoped<IPrescriptiveDecisionEngine, PrescriptiveDecisionEngine>();
 builder.Services.AddHostedService<BackgroundQueueService>();
 
