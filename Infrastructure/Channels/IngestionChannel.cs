@@ -20,4 +20,22 @@ public class IngestionChannel
 
     public ChannelWriter<TelemetryDto> Writer => _channel.Writer;
     public ChannelReader<TelemetryDto> Reader => _channel.Reader;
+
+    /// <summary>
+    /// Synchronizes background telemetry processing with baseline resets.
+    /// </summary>
+    public SemaphoreSlim ProcessingLock { get; } = new(1, 1);
+
+    /// <summary>
+    /// Drains any pending items from the channel (used during baseline reset).
+    /// </summary>
+    public int DrainPending()
+    {
+        int count = 0;
+        while (_channel.Reader.TryRead(out _))
+        {
+            count++;
+        }
+        return count;
+    }
 }

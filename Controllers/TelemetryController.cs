@@ -30,7 +30,7 @@ public class TelemetryController : ControllerBase
         _logger.LogInformation("Telemetry payload queued: Source={Source}, Event={Event}",
             payload.SourceType, payload.EventType);
 
-        await channel.WriteAsync(payload);
+        await channel.WriteAsync(payload, HttpContext.RequestAborted);
         return Accepted(new IngestResultDto());
     }
 

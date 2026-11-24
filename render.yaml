@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: erpes-control-tower
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/v1/operations/state
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__SupabaseConnection
+        sync: false

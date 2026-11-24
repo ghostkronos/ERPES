@@ -24,11 +24,43 @@ let plantSubTabs = {
 };
 
 // ==========================================
+// 0. GÜVENLİK VE YARDIMCI FONKSİYONLAR
+// ==========================================
+let sharedAudioContext = null;
+
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeAttrArg(value) {
+    return escapeHtml(JSON.stringify(value == null ? '' : String(value)));
+}
+
+function getAudioContext() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!sharedAudioContext) {
+        sharedAudioContext = new AudioCtx();
+    }
+    if (sharedAudioContext.state === 'suspended') {
+        sharedAudioContext.resume().catch(() => {});
+    }
+    return sharedAudioContext;
+}
+
+// ==========================================
 // 1. SES VE BİLDİRİM MOTORU
 // ==========================================
 function playAlertTone(type = 'info') {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = getAudioContext();
+        if (!ctx) return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain);
@@ -67,28 +99,28 @@ function showToast(title, message, type = 'info') {
     if (!container) return;
 
     const colors = {
-        critical: 'border-rose-500/80 bg-rose-950/90 text-rose-100 shadow-rose-950/50',
-        warning: 'border-amber-500/80 bg-amber-950/90 text-amber-100 shadow-amber-950/50',
-        success: 'border-emerald-500/80 bg-emerald-950/90 text-emerald-100 shadow-emerald-950/50',
-        info: 'border-cyan-500/80 bg-slate-900/95 text-cyan-100 shadow-cyan-950/50'
+        critical: 'border-rose-500/40 bg-[#18181b]/95 text-rose-100',
+        warning: 'border-amber-500/40 bg-[#18181b]/95 text-amber-100',
+        success: 'border-emerald-500/40 bg-[#18181b]/95 text-emerald-100',
+        info: 'border-white/[0.14] bg-[#18181b]/95 text-zinc-100'
     };
 
     const icons = {
         critical: 'fa-triangle-exclamation text-rose-400',
         warning: 'fa-bolt text-amber-400',
         success: 'fa-circle-check text-emerald-400',
-        info: 'fa-bell text-cyan-400'
+        info: 'fa-bell text-sky-400'
     };
 
     const toast = document.createElement('div');
     toast.className = `toast-enter flex items-start gap-3 p-3.5 rounded-xl border backdrop-blur-md shadow-2xl max-w-sm ${colors[type] || colors.info}`;
     toast.innerHTML = `
-        <i class="fa-solid ${icons[type] || icons.info} text-lg mt-0.5"></i>
+        <i class="fa-solid ${icons[type] || icons.info} text-sm mt-0.5"></i>
         <div class="flex-1 min-w-0">
-            <div class="font-bold text-xs tracking-wide uppercase">${title}</div>
-            <div class="text-[11px] opacity-90 mt-0.5 leading-snug">${message}</div>
+            <div class="font-semibold text-xs text-white">${escapeHtml(title)}</div>
+            <div class="text-[11px] text-zinc-300 mt-0.5 leading-snug">${escapeHtml(message)}</div>
         </div>
-        <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white text-xs cursor-pointer">
+        <button onclick="this.parentElement.remove()" class="text-zinc-500 hover:text-white text-xs cursor-pointer">
             <i class="fa-solid fa-xmark"></i>
         </button>
     `;
@@ -152,22 +184,26 @@ function setMapFilter(filter) {
         const btn = document.getElementById(`filter-btn-${f}`);
         if (btn) {
             if (f === filter) {
-                btn.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 transition-all cursor-pointer';
+                btn.className = 'px-2.5 py-1 rounded-md text-[11px] font-semibold bg-zinc-800 text-white transition-colors cursor-pointer';
             } else {
-                btn.className = 'px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200 transition-all cursor-pointer';
+                btn.className = 'px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer';
             }
         }
     });
 
-    map.removeLayer(plantLayerGroup);
-    map.removeLayer(landLayerGroup);
-    map.removeLayer(vesselLayerGroup);
-    map.removeLayer(aircraftLayerGroup);
+    if (!map) return;
 
-    if (filter === 'all' || filter === 'plants') plantLayerGroup.addTo(map);
-    if (filter === 'all' || filter === 'land') landLayerGroup.addTo(map);
-    if (filter === 'all' || filter === 'vessels') vesselLayerGroup.addTo(map);
-    if (filter === 'all' || filter === 'aircraft') aircraftLayerGroup.addTo(map);
+    if (routeLayerGroup) map.removeLayer(routeLayerGroup);
+    if (plantLayerGroup) map.removeLayer(plantLayerGroup);
+    if (landLayerGroup) map.removeLayer(landLayerGroup);
+    if (vesselLayerGroup) map.removeLayer(vesselLayerGroup);
+    if (aircraftLayerGroup) map.removeLayer(aircraftLayerGroup);
+
+    if ((filter === 'all' || filter === 'land') && routeLayerGroup) routeLayerGroup.addTo(map);
+    if ((filter === 'all' || filter === 'plants') && plantLayerGroup) plantLayerGroup.addTo(map);
+    if ((filter === 'all' || filter === 'land') && landLayerGroup) landLayerGroup.addTo(map);
+    if ((filter === 'all' || filter === 'vessels') && vesselLayerGroup) vesselLayerGroup.addTo(map);
+    if ((filter === 'all' || filter === 'aircraft') && aircraftLayerGroup) aircraftLayerGroup.addTo(map);
 }
 
 function focusMapOn(lat, lng, zoom = 9) {
@@ -181,9 +217,9 @@ function focusMapOn(lat, lng, zoom = 9) {
 function resolvePlantKey(plantObj, fallbackId) {
     if (plantObj) {
         const code = (plantObj.code || '').toUpperCase();
-        const city = (plantObj.city || '').toLowerCase();
-        const name = (plantObj.name || '').toLowerCase();
-        if (code === 'PLANT-C' || city.includes('izmir') || city.includes('İzmir') || name.includes('izmir') || name.includes('İzmir')) return 'PLANT-C';
+        const city = (plantObj.city || '').toLocaleLowerCase('tr-TR');
+        const name = (plantObj.name || '').toLocaleLowerCase('tr-TR');
+        if (code === 'PLANT-C' || city.includes('izmir') || name.includes('izmir')) return 'PLANT-C';
         if (code === 'PLANT-B' || city.includes('bursa') || name.includes('bursa')) return 'PLANT-B';
         if (code === 'PLANT-A' || city.includes('kocaeli') || name.includes('kocaeli')) return 'PLANT-A';
     }
@@ -194,6 +230,14 @@ function resolvePlantKey(plantObj, fallbackId) {
     if (fallbackId === 3) return 'PLANT-C';
     if (fallbackId === 2) return 'PLANT-B';
     return 'PLANT-A';
+}
+
+function resolvePlantCity(plantObj, fallbackId) {
+    if (plantObj?.city) return plantObj.city;
+    const key = resolvePlantKey(plantObj, fallbackId);
+    if (key === 'PLANT-C') return 'İzmir (Çiğli)';
+    if (key === 'PLANT-B') return 'Bursa (Nilüfer)';
+    return 'Kocaeli (Gebze)';
 }
 
 function getPlantRouteWaypoints(fromPlant, toPlant, fromPlantId, toPlantId) {
@@ -258,18 +302,19 @@ function renderPlantMarkers(plants) {
         const isWarn = plant.status === 'Warning';
 
         const ringColor = isCrit
-            ? 'border-rose-500 bg-rose-950/90 text-rose-300 radar-ping'
+            ? 'border-rose-500 bg-zinc-950 text-rose-400 radar-ping'
             : isWarn
-            ? 'border-amber-500 bg-amber-950/90 text-amber-300'
-            : 'border-cyan-500 bg-slate-900/95 text-cyan-300';
+            ? 'border-amber-400 bg-zinc-950 text-amber-400'
+            : 'border-sky-400 bg-zinc-950 text-sky-400';
 
+        const shortCity = (plant.city || '').split(' ')[0];
         const html = `
             <div class="relative flex flex-col items-center">
-                <div class="w-10 h-10 rounded-xl border-2 flex items-center justify-center shadow-2xl ${ringColor}">
-                    <i class="fa-solid fa-industry text-sm"></i>
+                <div class="w-8 h-8 rounded-lg border-2 flex items-center justify-center shadow-xl ${ringColor}">
+                    <i class="fa-solid fa-industry text-xs"></i>
                 </div>
-                <div class="mt-1 px-2 py-0.5 rounded bg-slate-950/95 border border-slate-700 text-[10px] font-bold font-mono text-white whitespace-nowrap shadow">
-                    ${plant.city} (%${plant.activeCapacityPercent.toFixed(0)})
+                <div class="mt-1 px-2 py-0.5 rounded-md bg-zinc-950/95 border border-white/15 text-[10px] font-semibold font-mono text-zinc-100 whitespace-nowrap shadow-md">
+                    ${escapeHtml(shortCity)} · %${plant.activeCapacityPercent.toFixed(0)}
                 </div>
             </div>
         `;
@@ -277,35 +322,35 @@ function renderPlantMarkers(plants) {
         const icon = L.divIcon({
             className: '',
             html: html,
-            iconSize: [64, 56],
-            iconAnchor: [32, 24]
+            iconSize: [72, 52],
+            iconAnchor: [36, 20]
         });
 
         const marker = L.marker([plant.latitude, plant.longitude], { icon }).addTo(plantLayerGroup);
 
         const invList = (plant.inventoryItems || []).map(i =>
-            `<div class="flex justify-between gap-3 py-0.5 border-b border-slate-800 text-[11px]">
-                <span class="text-slate-300">${i.materialName}</span>
-                <span class="font-mono font-bold ${i.timeToSurviveDays <= 2 ? 'text-rose-400' : 'text-emerald-400'}">${i.quantity} ${i.unit} (${i.timeToSurviveDays}g)</span>
+            `<div class="flex justify-between gap-3 py-1 border-b border-white/[0.06] text-[11px]">
+                <span class="text-zinc-300">${escapeHtml(i.materialName)}</span>
+                <span class="font-mono font-semibold ${i.timeToSurviveDays <= 2 ? 'text-rose-400' : 'text-emerald-400'}">${i.quantity} ${escapeHtml(i.unit)} (${i.timeToSurviveDays}g)</span>
              </div>`
         ).join('');
 
         marker.bindPopup(`
-            <div class="p-1 min-w-[240px]">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-                    <span class="font-bold text-cyan-400 text-xs">${plant.name}</span>
+            <div class="p-1 min-w-[235px]">
+                <div class="flex items-center justify-between border-b border-white/[0.08] pb-1.5 mb-2">
+                    <span class="font-semibold text-white text-xs">${escapeHtml(plant.name)}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 mb-2 text-[11px]">
-                    <div class="bg-slate-900 p-1.5 rounded">
-                        <div class="text-slate-400 text-[10px]">Üretim Yükü</div>
-                        <div class="font-bold font-mono text-white">%${plant.activeCapacityPercent.toFixed(1)}</div>
+                    <div class="bg-zinc-900 p-1.5 rounded-md border border-white/[0.06]">
+                        <div class="text-zinc-400 text-[10px]">Üretim Yükü</div>
+                        <div class="font-semibold font-mono text-white">%${plant.activeCapacityPercent.toFixed(1)}</div>
                     </div>
-                    <div class="bg-slate-900 p-1.5 rounded">
-                        <div class="text-slate-400 text-[10px]">Personel Kadrosu</div>
-                        <div class="font-bold font-mono text-white">${plant.currentWorkerCount}/${plant.requiredWorkerCount} Kişi</div>
+                    <div class="bg-zinc-900 p-1.5 rounded-md border border-white/[0.06]">
+                        <div class="text-zinc-400 text-[10px]">Personel Kadrosu</div>
+                        <div class="font-semibold font-mono text-white">${plant.currentWorkerCount}/${plant.requiredWorkerCount} Kişi</div>
                     </div>
                 </div>
-                <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Emniyet Stok Durumu</div>
+                <div class="text-[10px] uppercase font-semibold text-zinc-400 mb-1">Emniyet Stok Durumu</div>
                 ${invList}
             </div>
         `);
@@ -317,35 +362,32 @@ function renderPlantMarkers(plants) {
 function renderRadarOnMap(radar) {
     if (!radar || !vesselLayerGroup || !aircraftLayerGroup || !landLayerGroup) return;
 
+    const hasActiveAnimatedMat = (currentState?.materialTransfers || []).some(m => m.status === 'InTransit');
+    const hasActiveAnimatedWkr = (currentState?.workerTransfers || []).some(w => w.status === 'InTransit');
+
     // 1. Kara Taşıma Araçları
     landLayerGroup.clearLayers();
     (radar.landVehicles || []).forEach(lv => {
+        if ((lv.vehicleCode || '').startsWith('ACİL-SEVKIYAT-') && lv.status === 'EmergencyActive' && hasActiveAnimatedMat) return;
+        if ((lv.vehicleCode || '').startsWith('SERVIS-IK-') && hasActiveAnimatedWkr) return;
+
         const isEmerg = lv.status === 'EmergencyActive' || lv.status === 'WorkerShuttle';
-        const badgeStyle = isEmerg
-            ? 'bg-emerald-950/95 border-emerald-400 text-emerald-300 shadow-emerald-500/40'
-            : 'bg-slate-900/95 border-emerald-500/70 text-emerald-300';
-
         const iconClass = lv.status === 'WorkerShuttle' ? 'fa-van-shuttle' : 'fa-truck-fast';
-
-        const html = `
-            <div class="relative flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg ${badgeStyle}">
-                    <i class="fa-solid ${iconClass} text-xs"></i>
-                </div>
-                <div class="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 border border-slate-700 text-emerald-300 text-[9px] font-mono font-bold whitespace-nowrap">
-                    ${lv.plateNumber}
-                </div>
-            </div>
-        `;
+        const pinStyle = isEmerg
+            ? 'bg-emerald-950 border-emerald-400 text-emerald-300'
+            : 'bg-zinc-900/95 border-emerald-500/70 text-emerald-400';
 
         const icon = L.divIcon({
             className: '',
-            html,
-            iconSize: [44, 40],
-            iconAnchor: [22, 20]
+            html: `<div class="w-6 h-6 rounded-full border flex items-center justify-center shadow-lg ${pinStyle}">
+                    <i class="fa-solid ${iconClass} text-[10px]"></i>
+                   </div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
         });
 
         const m = L.marker([lv.latitude, lv.longitude], { icon }).addTo(landLayerGroup);
+        m.bindTooltip(`${escapeHtml(lv.plateNumber)} · ${escapeHtml(lv.eta)}`, { direction: 'top', offset: [0, -8] });
         m.on('click', () => openVehicleDetailModal('land', lv.vehicleCode));
     });
 
@@ -353,52 +395,52 @@ function renderRadarOnMap(radar) {
     vesselLayerGroup.clearLayers();
     (radar.vessels || []).forEach(v => {
         const isStrike = v.status === 'StrikeAlert';
-        const badgeStyle = isStrike
-            ? 'bg-rose-950/95 border-rose-500 text-rose-400 radar-ping'
-            : 'bg-blue-950/95 border-blue-400 text-blue-300';
+        const pinStyle = isStrike
+            ? 'bg-rose-950 border-rose-500 text-rose-400 radar-ping'
+            : 'bg-zinc-900/95 border-blue-400/70 text-blue-400';
 
         const html = `
             <div class="relative flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg ${badgeStyle}">
-                    <i class="fa-solid fa-ship text-xs"></i>
+                <div class="w-6 h-6 rounded-full border flex items-center justify-center shadow-lg ${pinStyle}">
+                    <i class="fa-solid fa-ship text-[10px]"></i>
                 </div>
-                <div class="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/90 border ${isStrike ? 'border-rose-500 text-rose-300' : 'border-slate-700 text-blue-200'} text-[9px] font-mono font-bold whitespace-nowrap">
-                    ${v.vesselName}
-                </div>
+                ${isStrike ? `<div class="mt-0.5 px-1.5 py-0.2 rounded bg-rose-950/95 border border-rose-500/70 text-rose-200 text-[9px] font-mono font-semibold whitespace-nowrap">${escapeHtml(v.vesselName)}</div>` : ''}
             </div>
         `;
 
         const icon = L.divIcon({
             className: '',
             html,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
         });
 
         const m = L.marker([v.latitude, v.longitude], { icon }).addTo(vesselLayerGroup);
+        m.bindTooltip(`${escapeHtml(v.vesselName)} · ${escapeHtml(v.eta)}`, { direction: 'top', offset: [0, -8] });
         m.on('click', () => openVehicleDetailModal('sea', v.mmsi));
     });
 
     // 3. Hava Kargo Uçakları
     aircraftLayerGroup.clearLayers();
     (radar.aircraft || []).forEach(a => {
+        const callsign = a.callsign || '';
         const isCrit = a.status === 'Critical';
-        const isCargo = a.callsign.includes('CARGO') || a.callsign.includes('DHL') || a.callsign.includes('MNG');
+        const isCargo = callsign.includes('CARGO') || callsign.includes('DHL') || callsign.includes('MNG');
 
         const planeColor = isCrit
-            ? 'text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.9)]'
+            ? 'text-rose-400 drop-shadow-[0_0_6px_rgba(244,63,94,0.85)]'
             : isCargo
-            ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]'
-            : 'text-cyan-300 drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]';
+            ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.7)]'
+            : 'text-zinc-400 opacity-75';
 
         const html = `
             <div class="relative flex flex-col items-center">
-                <div style="transform: rotate(${a.heading || 0}deg);" class="transition-transform duration-500">
-                    <i class="fa-solid fa-plane-up text-base ${planeColor}"></i>
+                <div style="transform: rotate(${Number(a.heading) || 0}deg);" class="transition-transform duration-500">
+                    <i class="fa-solid fa-plane-up ${isCargo || isCrit ? 'text-sm' : 'text-[11px]'} ${planeColor}"></i>
                 </div>
-                ${isCargo || isCrit ? `
-                <div class="mt-0.5 px-1 rounded bg-slate-950/90 border ${isCrit ? 'border-rose-500 text-rose-300' : 'border-amber-500/60 text-amber-300'} text-[9px] font-mono font-bold whitespace-nowrap">
-                    ${a.callsign}
+                ${isCrit ? `
+                <div class="mt-0.5 px-1 rounded bg-rose-950/95 border border-rose-500/70 text-rose-200 text-[9px] font-mono font-semibold whitespace-nowrap">
+                    ${escapeHtml(callsign)}
                 </div>` : ''}
             </div>
         `;
@@ -406,12 +448,13 @@ function renderRadarOnMap(radar) {
         const icon = L.divIcon({
             className: '',
             html,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14]
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
         });
 
         const m = L.marker([a.latitude, a.longitude], { icon }).addTo(aircraftLayerGroup);
-        m.on('click', () => openVehicleDetailModal('air', a.callsign));
+        m.bindTooltip(`${escapeHtml(callsign)} · ${escapeHtml(a.eta)}`, { direction: 'top', offset: [0, -6] });
+        m.on('click', () => openVehicleDetailModal('air', callsign));
     });
 }
 
@@ -427,8 +470,8 @@ function renderActiveRoutes(materialTransfers, workerTransfers) {
 
         const isApproved = m.status === 'InTransit';
         const waypoints = getPlantRouteWaypoints(m.fromPlant, m.toPlant, m.fromPlantId, m.toPlantId);
-        const fromCity = m.fromPlant?.city || (resolvePlantKey(m.fromPlant, m.fromPlantId) === 'PLANT-C' ? 'İzmir' : 'Bursa');
-        const toCity = m.toPlant?.city || 'Kocaeli';
+        const fromCity = resolvePlantCity(m.fromPlant, m.fromPlantId);
+        const toCity = resolvePlantCity(m.toPlant, m.toPlantId);
 
         const poly = L.polyline(waypoints, {
             color: isApproved ? '#10b981' : '#f59e0b',
@@ -437,14 +480,15 @@ function renderActiveRoutes(materialTransfers, workerTransfers) {
             dashArray: isApproved ? null : '8, 8'
         }).addTo(routeLayerGroup);
 
-        poly.bindTooltip(`${fromCity} ➔ ${toCity}: ${m.quantity} ${m.unit} ${m.materialName}`, { sticky: true });
+        poly.bindTooltip(escapeHtml(`${fromCity} ➔ ${toCity}: ${m.quantity} ${m.unit} ${m.materialName}`), { sticky: true });
 
         if (isApproved) {
             animateVehicleOnPath(
                 waypoints,
                 'fa-truck-fast',
                 'emerald',
-                `${fromCity} ➔ ${toCity}: ${m.quantity} ${m.unit} ${m.materialName} (Sevkiyat Yolda)`
+                escapeHtml(`${fromCity} ➔ ${toCity}: ${m.quantity} ${m.unit} ${m.materialName} (Sevkiyat Yolda)`),
+                `ACİL-SEVKIYAT-${m.id}`
             );
         }
     });
@@ -470,8 +514,8 @@ function renderActiveRoutes(materialTransfers, workerTransfers) {
         const w = group.order;
         const isApproved = w.status === 'InTransit';
         const workerWaypoints = getPlantRouteWaypoints(w.fromPlant, w.toPlant, w.fromPlantId, w.toPlantId);
-        const fromCity = w.fromPlant?.city || (resolvePlantKey(w.fromPlant, w.fromPlantId) === 'PLANT-C' ? 'İzmir' : 'Bursa');
-        const toCity = w.toPlant?.city || 'Kocaeli';
+        const fromCity = resolvePlantCity(w.fromPlant, w.fromPlantId);
+        const toCity = resolvePlantCity(w.toPlant, w.toPlantId);
 
         const poly = L.polyline(workerWaypoints, {
             color: isApproved ? '#06b6d4' : '#a855f7',
@@ -480,20 +524,21 @@ function renderActiveRoutes(materialTransfers, workerTransfers) {
             dashArray: isApproved ? null : '6, 6'
         }).addTo(routeLayerGroup);
 
-        poly.bindTooltip(`${fromCity} ➔ ${toCity} Personel Transferi: ${group.workers.join(', ')}`, { sticky: true });
+        poly.bindTooltip(escapeHtml(`${fromCity} ➔ ${toCity} Personel Transferi: ${group.workers.join(', ')}`), { sticky: true });
 
         if (isApproved) {
             animateVehicleOnPath(
                 workerWaypoints,
                 'fa-van-shuttle',
                 'cyan',
-                `${fromCity} ➔ ${toCity}: ${group.workers.join(', ')} (Transfer Aracı Yolda)`
+                escapeHtml(`${fromCity} ➔ ${toCity}: ${group.workers.join(', ')} (Transfer Aracı Yolda)`),
+                `SERVIS-IK-${w.id}`
             );
         }
     });
 }
 
-function animateVehicleOnPath(waypoints, iconClass, colorName, tooltipText) {
+function animateVehicleOnPath(waypoints, iconClass, colorName, tooltipText, vehicleCode = null) {
     const badgeClass = colorName === 'emerald'
         ? 'bg-emerald-950 border-emerald-400 text-emerald-300 shadow-emerald-500/50'
         : 'bg-cyan-950 border-cyan-400 text-cyan-300 shadow-cyan-500/50';
@@ -509,6 +554,9 @@ function animateVehicleOnPath(waypoints, iconClass, colorName, tooltipText) {
 
     const marker = L.marker(waypoints[0], { icon }).addTo(routeLayerGroup);
     marker.bindTooltip(tooltipText, { permanent: false, direction: 'top' });
+    if (vehicleCode) {
+        marker.on('click', () => openVehicleDetailModal('land', vehicleCode));
+    }
 
     let step = 0;
     const totalSteps = 140;
@@ -537,22 +585,64 @@ function updateUI(state) {
     if (!state) return;
     currentState = state;
 
+    // Keep worker cache synchronized with latest state so plant cards never render stale IDs
+    if (Array.isArray(state.mobileWorkers)) {
+        workforceData = workforceData
+            ? { ...workforceData, workers: state.mobileWorkers, plants: state.plants || workforceData.plants }
+            : { workers: state.mobileWorkers, plants: state.plants || [] };
+    }
+
     // 1. Üst KPI Kartları
-    document.getElementById('kpi-otif').innerText = `%${state.kpis.otifPercent.toFixed(1)}`;
-    document.getElementById('kpi-tts').innerText = `${state.kpis.averageTimeToSurviveDays.toFixed(1)} Gün`;
-    document.getElementById('kpi-variance').innerText = `%${state.kpis.multiPlantWorkloadVariance.toFixed(1)}`;
-    document.getElementById('kpi-savings').innerText = `€${Number(state.kpis.totalAvoidedPenaltyEur).toLocaleString('tr-TR')}`;
-    document.getElementById('kpi-cost').innerText = `Acil Sevkiyat ve Görevlendirme Maliyeti: €${Number(state.kpis.totalEmergencyLogisticsCostEur).toLocaleString('tr-TR')}`;
+    const kpis = state.kpis || {};
+    const otifEl = document.getElementById('kpi-otif');
+    const ttsEl = document.getElementById('kpi-tts');
+    const varEl = document.getElementById('kpi-variance');
+    const savEl = document.getElementById('kpi-savings');
+    const costEl = document.getElementById('kpi-cost');
+
+    if (otifEl) otifEl.innerText = `%${Number(kpis.otifPercent ?? 98.4).toFixed(1)}`;
+    if (ttsEl) ttsEl.innerText = `${Number(kpis.averageTimeToSurviveDays ?? 2.0).toFixed(1)} Gün`;
+    if (varEl) varEl.innerText = `%${Number(kpis.multiPlantWorkloadVariance ?? 44.5).toFixed(1)}`;
+    if (savEl) savEl.innerText = `€${Number(kpis.totalAvoidedPenaltyEur ?? 0).toLocaleString('tr-TR')}`;
+    if (costEl) costEl.innerText = `Acil Sevkiyat ve Görevlendirme Maliyeti: €${Number(kpis.totalEmergencyLogisticsCostEur ?? 0).toLocaleString('tr-TR')}`;
+
+    const otifStatusEl = document.getElementById('kpi-otif-status');
+    if (otifStatusEl) {
+        const otifVal = Number(kpis.otifPercent ?? 98.4);
+        otifStatusEl.innerHTML = otifVal >= 95
+            ? '<i class="fa-solid fa-arrow-trend-up mr-1"></i>Optimal'
+            : '<i class="fa-solid fa-triangle-exclamation mr-1"></i>Hedef Altı';
+        otifStatusEl.className = otifVal >= 95 ? 'text-emerald-400 font-medium whitespace-nowrap' : 'text-rose-400 font-medium whitespace-nowrap';
+    }
+
+    // Update dynamic TTS subtitle from most critical inventory item
+    const allItems = (state.plants || []).flatMap(p => (p.inventoryItems || []).map(i => ({ plant: p, item: i })));
+    if (allItems.length > 0) {
+        allItems.sort((a, b) => (a.item.timeToSurviveDays ?? 99) - (b.item.timeToSurviveDays ?? 99));
+        const lowest = allItems[0];
+        const ttsMatEl = document.getElementById('kpi-tts-material');
+        const ttsConsEl = document.getElementById('kpi-tts-consumption');
+        if (ttsMatEl) ttsMatEl.innerText = `${lowest.plant.city} — ${lowest.item.materialName}`;
+        if (ttsConsEl) ttsConsEl.innerText = `${lowest.item.dailyConsumptionRate} ${lowest.item.unit}/Gün`;
+    }
+
+    // Update dynamic plant load breakdown
+    const varBreakEl = document.getElementById('kpi-variance-breakdown');
+    if (varBreakEl && Array.isArray(state.plants) && state.plants.length > 0) {
+        varBreakEl.innerText = state.plants
+            .map(p => `${(p.city || p.name).split(' ')[0]} (%${Number(p.activeCapacityPercent).toFixed(1)})`)
+            .join(' — ');
+    }
 
     const crisisEl = document.getElementById('crisis-counter');
     if (crisisEl) {
-        const count = state.kpis.activeCrisisCount;
+        const count = Number(kpis.activeCrisisCount ?? 0);
         crisisEl.innerHTML = count > 0
-            ? `<i class="fa-solid fa-triangle-exclamation animate-bounce mr-1"></i> ${count} AKTİF OPERASYON RİSKİ`
-            : `<i class="fa-solid fa-circle-check mr-1"></i> OPERASYON STABİL`;
+            ? `<i class="fa-solid fa-triangle-exclamation mr-1"></i>${count} AKTİF RİSK`
+            : `<i class="fa-solid fa-circle-check mr-1"></i>OPERASYON STABİL`;
         crisisEl.className = count > 0
-            ? 'px-3 py-1 text-xs font-extrabold rounded-full bg-rose-950/90 border border-rose-500 text-rose-300 shadow-lg shadow-rose-950/50 animate-pulse'
-            : 'px-3 py-1 text-xs font-bold rounded-full bg-emerald-950/80 border border-emerald-500/60 text-emerald-300';
+            ? 'px-2.5 py-1 text-[11px] font-semibold rounded-md bg-rose-500/15 border border-rose-500/35 text-rose-300 animate-pulse'
+            : 'px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-400';
     }
 
     // 2. Harita Katmanları
@@ -587,7 +677,7 @@ function getVehiclesForPlant(plantCode) {
 }
 
 function getWorkersForPlant(plant) {
-    const allWorkers = workforceData?.workers || currentState?.mobileWorkers || [];
+    const allWorkers = currentState?.mobileWorkers || workforceData?.workers || [];
     return allWorkers.filter(w => w.currentPlantId === plant.id || w.homePlantId === plant.id);
 }
 
@@ -603,13 +693,13 @@ function renderPlantCards(plants) {
         const isWarn = plant.status === 'Warning';
 
         const statusBadge = isCrit
-            ? `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-500/60">KRİTİK RİSK</span>`
+            ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30 whitespace-nowrap">KRİTİK RİSK</span>`
             : isWarn
-            ? `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-500/60">KAPASİTE UYARISI</span>`
-            : `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/60">DENGELİ</span>`;
+            ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap">UYARI</span>`
+            : `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 whitespace-nowrap">DENGELİ</span>`;
 
         const capPercent = Math.min(100, plant.activeCapacityPercent);
-        const capBarColor = plant.activeCapacityPercent > 100 ? 'bg-rose-500' : plant.activeCapacityPercent > 85 ? 'bg-amber-400' : 'bg-cyan-400';
+        const capBarColor = plant.activeCapacityPercent > 100 ? 'bg-rose-500' : plant.activeCapacityPercent > 85 ? 'bg-amber-400' : 'bg-sky-400';
 
         const fleet = getVehiclesForPlant(plantCode);
         const plantWorkers = getWorkersForPlant(plant);
@@ -629,15 +719,15 @@ function renderPlantCards(plants) {
         let transferBannerHtml = '';
         if (incomingTransfers.length > 0 || outgoingTransfers.length > 0 || proposedIncoming.length > 0) {
             const inBadges = incomingTransfers.map(t => {
-                const fromCity = t.fromPlant?.city || 'Diğer Tesis';
+                const fromCity = escapeHtml(t.fromPlant?.city || 'Diğer Tesis');
                 return `
                     <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-cyan-950/90 border border-cyan-500/60 text-cyan-200 text-[11px]">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <i class="fa-solid fa-van-shuttle text-cyan-400"></i>
-                            <span class="font-bold text-white truncate">${t.worker?.fullName || 'Uzman'}</span>
+                            <span class="font-bold text-white truncate">${escapeHtml(t.worker?.fullName || 'Uzman')}</span>
                             <span class="text-[10px] opacity-90 truncate">(${fromCity} ➔ Bu Fabrikaya Transfer Ediliyor / Görevde)</span>
                         </div>
-                        <button onclick="recallWorker(${t.id})" class="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-[10px] text-cyan-300 border border-cyan-700 shrink-0 cursor-pointer">
+                        <button onclick="recallWorker(${Number(t.id)})" class="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-[10px] text-cyan-300 border border-cyan-700 shrink-0 cursor-pointer">
                             Geri Döndür
                         </button>
                     </div>
@@ -645,15 +735,15 @@ function renderPlantCards(plants) {
             }).join('');
 
             const propBadges = proposedIncoming.map(t => {
-                const fromCity = t.fromPlant?.city || 'Diğer Tesis';
+                const fromCity = escapeHtml(t.fromPlant?.city || 'Diğer Tesis');
                 return `
                     <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-950/90 border border-amber-500/60 text-amber-200 text-[11px]">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <i class="fa-solid fa-user-clock text-amber-400"></i>
-                            <span class="font-bold text-white truncate">${t.worker?.fullName || 'Uzman'}</span>
+                            <span class="font-bold text-white truncate">${escapeHtml(t.worker?.fullName || 'Uzman')}</span>
                             <span class="text-[10px] opacity-90 truncate">(${fromCity} ➔ Bu Fabrikaya Görevlendirme Önerildi)</span>
                         </div>
-                        <button onclick="approveWorkerTransfer(${t.id})" class="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[10px] shrink-0 cursor-pointer">
+                        <button onclick="approveWorkerTransfer(${Number(t.id)})" class="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[10px] shrink-0 cursor-pointer">
                             Onayla
                         </button>
                     </div>
@@ -661,12 +751,12 @@ function renderPlantCards(plants) {
             }).join('');
 
             const outBadges = outgoingTransfers.map(t => {
-                const toCity = t.toPlant?.city || 'Diğer Tesis';
+                const toCity = escapeHtml(t.toPlant?.city || 'Diğer Tesis');
                 return `
                     <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-purple-950/70 border border-purple-500/50 text-purple-200 text-[11px]">
                         <div class="flex items-center gap-1.5 min-w-0">
                             <i class="fa-solid fa-route text-purple-400"></i>
-                            <span class="font-bold text-white truncate">${t.worker?.fullName || 'Uzman'}</span>
+                            <span class="font-bold text-white truncate">${escapeHtml(t.worker?.fullName || 'Uzman')}</span>
                             <span class="text-[10px] opacity-90 truncate">(${toCity} Tesisine Transfer Edildi)</span>
                         </div>
                     </div>
@@ -690,30 +780,27 @@ function renderPlantCards(plants) {
         let subTabContentHtml = '';
 
         if (activeSubTab === 'vehicles') {
-            // Render Land, Air, Sea Vehicles for this plant
             const landRows = fleet.land.map(lv => {
                 const isEmerg = lv.status === 'EmergencyActive' || lv.status === 'WorkerShuttle';
                 return `
-                    <div onclick="openVehicleDetailModal('land', '${lv.vehicleCode}')"
-                         class="p-2.5 rounded-xl bg-slate-950/90 hover:bg-slate-900 border ${isEmerg ? 'border-emerald-500/70' : 'border-slate-800'} flex items-center justify-between gap-2 cursor-pointer transition-all">
+                    <div onclick="openVehicleDetailModal('land', ${escapeAttrArg(lv.vehicleCode)})"
+                         class="p-2.5 rounded-lg bg-zinc-900/70 hover:bg-zinc-900 border ${isEmerg ? 'border-emerald-500/40' : 'border-white/[0.06]'} flex items-center justify-between gap-2 cursor-pointer transition-colors">
                         <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-                                <i class="fa-solid ${lv.status === 'WorkerShuttle' ? 'fa-van-shuttle' : 'fa-truck-fast'} text-xs"></i>
+                            <div class="w-7 h-7 rounded-md bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 shrink-0">
+                                <i class="fa-solid ${lv.status === 'WorkerShuttle' ? 'fa-van-shuttle' : 'fa-truck-fast'} text-[11px]"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">KARA</span>
-                                    <span class="font-bold text-xs text-white truncate">${lv.plateNumber} — ${lv.vehicleType}</span>
+                                    <span class="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-zinc-800 text-emerald-400">KARA</span>
+                                    <span class="font-medium text-xs text-zinc-100 truncate">${escapeHtml(lv.plateNumber)} · ${escapeHtml(lv.vehicleType)}</span>
                                 </div>
-                                <div class="text-[11px] text-cyan-300 truncate mt-0.5">${lv.cargoDescription} (${lv.quantityText})</div>
-                                <div class="text-[10px] text-slate-400 truncate">${lv.originLocation} ➔ ${lv.destinationLocation}</div>
+                                <div class="text-[11px] text-zinc-400 truncate mt-0.5">${escapeHtml(lv.cargoDescription)} (${escapeHtml(lv.quantityText)})</div>
                             </div>
                         </div>
                         <div class="text-right shrink-0">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-900 text-emerald-300 border border-slate-700 block">
-                                ${lv.eta}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-950 text-emerald-400 border border-white/[0.06] block">
+                                ${escapeHtml(lv.eta)}
                             </span>
-                            <span class="text-[10px] text-cyan-400 font-semibold mt-1 inline-block">Detay <i class="fa-solid fa-chevron-right text-[9px]"></i></span>
                         </div>
                     </div>
                 `;
@@ -722,26 +809,24 @@ function renderPlantCards(plants) {
             const airRows = fleet.air.map(a => {
                 const isCritFlight = a.status === 'Critical';
                 return `
-                    <div onclick="openVehicleDetailModal('air', '${a.callsign}')"
-                         class="p-2.5 rounded-xl bg-slate-950/90 hover:bg-slate-900 border ${isCritFlight ? 'border-rose-500/70' : 'border-slate-800'} flex items-center justify-between gap-2 cursor-pointer transition-all">
+                    <div onclick="openVehicleDetailModal('air', ${escapeAttrArg(a.callsign)})"
+                         class="p-2.5 rounded-lg bg-zinc-900/70 hover:bg-zinc-900 border ${isCritFlight ? 'border-rose-500/40' : 'border-white/[0.06]'} flex items-center justify-between gap-2 cursor-pointer transition-colors">
                         <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-8 h-8 rounded-lg ${isCritFlight ? 'bg-rose-500/20 border-rose-500/50 text-rose-400' : 'bg-amber-500/15 border-amber-500/40 text-amber-400'} border flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-plane-up text-xs"></i>
+                            <div class="w-7 h-7 rounded-md ${isCritFlight ? 'bg-rose-500/15 border-rose-500/35 text-rose-400' : 'bg-amber-500/10 border-amber-500/25 text-amber-400'} border flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-plane-up text-[11px]"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-700/60">HAVA</span>
-                                    <span class="font-bold text-xs text-white truncate">${a.callsign} Kargo Uçağı</span>
+                                    <span class="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-zinc-800 text-amber-400">HAVA</span>
+                                    <span class="font-medium text-xs text-zinc-100 truncate">${escapeHtml(a.callsign)}</span>
                                 </div>
-                                <div class="text-[11px] text-cyan-300 truncate mt-0.5">${a.cargoType}</div>
-                                <div class="text-[10px] text-slate-400 truncate">${a.originAirport} ➔ ${a.destinationAirport}</div>
+                                <div class="text-[11px] text-zinc-400 truncate mt-0.5">${escapeHtml(a.cargoType)}</div>
                             </div>
                         </div>
                         <div class="text-right shrink-0">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isCritFlight ? 'bg-rose-950 text-rose-300 border border-rose-500' : 'bg-slate-900 text-amber-300 border border-slate-700'} block">
-                                ${isCritFlight ? '+36s Rötarlı' : a.eta}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono ${isCritFlight ? 'bg-rose-950/80 text-rose-300 border-rose-500/40' : 'bg-zinc-950 text-zinc-300 border-white/[0.06]'} border block">
+                                ${escapeHtml(a.eta)}
                             </span>
-                            <span class="text-[10px] text-cyan-400 font-semibold mt-1 inline-block">Detay <i class="fa-solid fa-chevron-right text-[9px]"></i></span>
                         </div>
                     </div>
                 `;
@@ -750,36 +835,34 @@ function renderPlantCards(plants) {
             const seaRows = fleet.sea.map(v => {
                 const isStrike = v.status === 'StrikeAlert';
                 return `
-                    <div onclick="openVehicleDetailModal('sea', '${v.mmsi}')"
-                         class="p-2.5 rounded-xl bg-slate-950/90 hover:bg-slate-900 border ${isStrike ? 'border-rose-500/70' : 'border-slate-800'} flex items-center justify-between gap-2 cursor-pointer transition-all">
+                    <div onclick="openVehicleDetailModal('sea', ${escapeAttrArg(v.mmsi)})"
+                         class="p-2.5 rounded-lg bg-zinc-900/70 hover:bg-zinc-900 border ${isStrike ? 'border-rose-500/40' : 'border-white/[0.06]'} flex items-center justify-between gap-2 cursor-pointer transition-colors">
                         <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-8 h-8 rounded-lg ${isStrike ? 'bg-rose-500/20 border-rose-500/50 text-rose-400' : 'bg-blue-500/15 border-blue-500/40 text-blue-400'} border flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-ship text-xs"></i>
+                            <div class="w-7 h-7 rounded-md ${isStrike ? 'bg-rose-500/15 border-rose-500/35 text-rose-400' : 'bg-blue-500/10 border-blue-500/25 text-blue-400'} border flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-ship text-[11px]"></i>
                             </div>
                             <div class="min-w-0">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-700/60">DENİZ</span>
-                                    <span class="font-bold text-xs text-white truncate">${v.vesselName}</span>
+                                    <span class="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-zinc-800 text-blue-400">DENİZ</span>
+                                    <span class="font-medium text-xs text-zinc-100 truncate">${escapeHtml(v.vesselName)}</span>
                                 </div>
-                                <div class="text-[11px] text-cyan-300 truncate mt-0.5">${v.cargoManifest}</div>
-                                <div class="text-[10px] text-slate-400 truncate">${v.originPort} ➔ ${v.destinationPort}</div>
+                                <div class="text-[11px] text-zinc-400 truncate mt-0.5">${escapeHtml(v.cargoManifest)}</div>
                             </div>
                         </div>
                         <div class="text-right shrink-0">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isStrike ? 'bg-rose-950 text-rose-300 border border-rose-500' : 'bg-slate-900 text-blue-300 border border-slate-700'} block">
-                                ${isStrike ? 'Grev (+6 Gün)' : v.eta}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono ${isStrike ? 'bg-rose-950/80 text-rose-300 border-rose-500/40' : 'bg-zinc-950 text-zinc-300 border-white/[0.06]'} border block">
+                                ${escapeHtml(v.eta)}
                             </span>
-                            <span class="text-[10px] text-cyan-400 font-semibold mt-1 inline-block">Detay <i class="fa-solid fa-chevron-right text-[9px]"></i></span>
                         </div>
                     </div>
                 `;
             }).join('');
 
             subTabContentHtml = `
-                <div class="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                    <div class="text-[10px] text-slate-400 flex items-center justify-between px-1">
-                        <span>Araca tıklayarak manifesto ve canlı konum kartını açın</span>
-                        <span class="font-mono text-cyan-300">${fleet.land.length} Kara • ${fleet.air.length} Hava • ${fleet.sea.length} Deniz</span>
+                <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                    <div class="text-[10px] text-zinc-500 flex items-center justify-between px-0.5 pb-1">
+                        <span>Detay için araca tıklayın</span>
+                        <span class="font-mono text-zinc-400">${fleet.land.length} Kara · ${fleet.air.length} Hava · ${fleet.sea.length} Deniz</span>
                     </div>
                     ${landRows}
                     ${airRows}
@@ -787,7 +870,6 @@ function renderPlantCards(plants) {
                 </div>
             `;
         } else if (activeSubTab === 'workers') {
-            // Sort workers so newly transferred-in workers appear right at the top
             const sortedWorkers = [...plantWorkers].sort((a, b) => {
                 const aIn = a.homePlantId !== a.currentPlantId && a.currentPlantId === plant.id ? 1 : 0;
                 const bIn = b.homePlantId !== b.currentPlantId && b.currentPlantId === plant.id ? 1 : 0;
@@ -798,35 +880,38 @@ function renderPlantCards(plants) {
                 const isRotational = w.isMobilityAccepted;
                 const isTransferredHere = w.homePlantId !== w.currentPlantId && w.currentPlantId === plant.id;
                 const isDispatchedAway = w.homePlantId === plant.id && w.currentPlantId !== plant.id;
+                const isInTransit = w.status === 'InTransit';
 
                 const statusTag = isDispatchedAway
-                    ? `<span class="text-[10px] px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-500/60 font-bold">🚀 ${w.currentPlant?.city || 'Diğer Fabrika'} Tesisine Transfer Edildi</span>`
+                    ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30 font-medium">${escapeHtml(w.currentPlant?.city || 'Diğer Fabrika')} Tesisine Transfer</span>`
                     : isTransferredHere
-                    ? `<span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/70 font-bold">⚡ ${w.homePlant?.city || 'Diğer Fabrika'} Tesisinden Transfer Edildi (Görevde)</span>`
+                    ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-medium">${escapeHtml(w.homePlant?.city || 'Diğer Fabrika')} Tesisinden Görevde</span>`
                     : isRotational
-                    ? `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-600/50">Rotasyona Uygun (€${w.mobilityAllowanceRate}/gün)</span>`
-                    : `<span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-700">Sabit Kadro</span>`;
+                    ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">Rotasyona Uygun (€${w.mobilityAllowanceRate}/gün)</span>`
+                    : `<span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-white/[0.06]">Sabit Kadro</span>`;
 
-                const dispatchBtn = isRotational && !isDispatchedAway
-                    ? `<button onclick="openDispatchModal(${w.id})"
-                               class="px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-extrabold text-[10px] flex items-center gap-1 cursor-pointer shrink-0 shadow">
-                            <i class="fa-solid fa-paper-plane"></i> Görevlendir
+                const dispatchBtn = isRotational && !isDispatchedAway && !isTransferredHere && !isInTransit
+                    ? `<button onclick="openDispatchModal(${Number(w.id)})"
+                               class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[10px] flex items-center gap-1 cursor-pointer shrink-0">
+                            <i class="fa-solid fa-paper-plane text-[9px]"></i> Görevlendir
                        </button>`
+                    : isTransferredHere || isInTransit
+                    ? `<span class="text-[10px] font-medium text-sky-400 shrink-0">Görevde</span>`
                     : isDispatchedAway
-                    ? `<span class="text-[10px] font-bold text-purple-300 shrink-0">Transferde</span>`
-                    : `<button onclick="attemptLockedWorkerDispatch('${w.fullName}')"
-                               class="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 text-[10px] font-semibold cursor-not-allowed shrink-0">
-                            <i class="fa-solid fa-lock"></i> Sabit
+                    ? `<span class="text-[10px] font-medium text-violet-400 shrink-0">Transferde</span>`
+                    : `<button onclick="attemptLockedWorkerDispatch(${escapeAttrArg(w.fullName)})"
+                               class="px-2 py-1 rounded-md bg-zinc-900 border border-white/[0.06] text-zinc-500 text-[10px] cursor-not-allowed shrink-0">
+                            <i class="fa-solid fa-lock text-[9px]"></i> Sabit
                        </button>`;
 
                 return `
-                    <div class="p-2.5 rounded-xl ${isTransferredHere ? 'bg-cyan-950/35 border-cyan-500/70' : isDispatchedAway ? 'bg-purple-950/20 border-purple-500/40 opacity-80' : 'bg-slate-950/90 border-slate-800/90'} border flex items-center justify-between gap-2 text-xs">
+                    <div class="p-2.5 rounded-lg ${isTransferredHere ? 'bg-sky-950/20 border-sky-500/35' : isDispatchedAway ? 'bg-zinc-900/40 border-white/[0.05] opacity-75' : 'bg-zinc-900/70 border-white/[0.06]'} border flex items-center justify-between gap-2 text-xs">
                         <div class="min-w-0">
                             <div class="flex items-center gap-2">
-                                <span class="font-bold text-white">${w.fullName}</span>
-                                <span class="text-[10px] font-mono text-cyan-400">Yetkinlik: ${w.skillScore}/100</span>
+                                <span class="font-medium text-zinc-100">${escapeHtml(w.fullName)}</span>
+                                <span class="text-[10px] font-mono text-zinc-400">${w.skillScore}/100</span>
                             </div>
-                            <div class="text-[11px] text-slate-300 mt-0.5">${w.roleOrSkill}</div>
+                            <div class="text-[11px] text-zinc-400 mt-0.5">${escapeHtml(w.roleOrSkill)}</div>
                             <div class="mt-1">${statusTag}</div>
                         </div>
                         ${dispatchBtn}
@@ -835,29 +920,28 @@ function renderPlantCards(plants) {
             }).join('');
 
             subTabContentHtml = `
-                <div class="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                    <div class="flex items-center justify-between text-[10px] text-slate-400 px-1">
-                        <span>Bu Fabrikada Aktif Görev Yapan: <strong class="text-white">${activeWorkersInPlant.length} Uzman</strong></span>
-                        <span class="text-emerald-400 font-semibold">Hedef Kadro: ${plant.requiredWorkerCount} Uzman</span>
+                <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                    <div class="flex items-center justify-between text-[10px] text-zinc-500 px-0.5 pb-1">
+                        <span>Aktif Görev Yapan: <strong class="text-zinc-200">${activeWorkersInPlant.length} Uzman</strong></span>
+                        <span class="text-emerald-400 font-medium">Hedef Kadro: ${plant.requiredWorkerCount}</span>
                     </div>
                     ${workerRows}
                 </div>
             `;
         } else {
-            // Stock & Buffer items
             const itemsHtml = (plant.inventoryItems || []).map(item => {
                 const ttsCrit = item.timeToSurviveDays <= 2.5;
                 return `
-                    <div class="p-3 rounded-xl bg-slate-950/90 border ${ttsCrit ? 'border-rose-500/60' : 'border-slate-800'} flex items-center justify-between text-xs">
-                        <div class="pr-2">
-                            <div class="font-bold text-white">${item.materialName}</div>
-                            <div class="text-[11px] text-slate-400 mt-0.5">Kod: <span class="font-mono text-cyan-300">${item.materialCode}</span> • Günlük Tüketim: ${item.dailyConsumptionRate} ${item.unit}</div>
-                            <div class="text-[10px] text-slate-500 mt-0.5">Emniyet Eşiği: ${item.safetyStockThreshold} ${item.unit}</div>
+                    <div class="p-2.5 rounded-lg bg-zinc-900/70 border ${ttsCrit ? 'border-rose-500/35' : 'border-white/[0.06]'} flex items-center justify-between text-xs">
+                        <div class="pr-2 min-w-0">
+                            <div class="font-medium text-zinc-100 truncate">${escapeHtml(item.materialName)}</div>
+                            <div class="text-[10px] text-zinc-400 mt-0.5 font-mono">${escapeHtml(item.materialCode)} · ${item.dailyConsumptionRate} ${escapeHtml(item.unit)}/gün</div>
+                            <div class="text-[10px] text-zinc-500">Eşik: ${item.safetyStockThreshold} ${escapeHtml(item.unit)}</div>
                         </div>
                         <div class="text-right shrink-0">
-                            <div class="font-mono font-extrabold text-sm text-white">${item.quantity.toLocaleString('tr-TR')} ${item.unit}</div>
-                            <div class="text-[11px] font-bold mt-0.5 ${ttsCrit ? 'text-rose-400' : 'text-emerald-400'}">
-                                Yetme Süresi: ${item.timeToSurviveDays} Gün
+                            <div class="font-mono font-semibold text-xs text-white">${Number(item.quantity).toLocaleString('tr-TR')} ${escapeHtml(item.unit)}</div>
+                            <div class="text-[10px] font-medium mt-0.5 ${ttsCrit ? 'text-rose-400' : 'text-emerald-400'}">
+                                ${item.timeToSurviveDays} Gün
                             </div>
                         </div>
                     </div>
@@ -865,70 +949,66 @@ function renderPlantCards(plants) {
             }).join('');
 
             subTabContentHtml = `
-                <div class="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
-                    <div class="text-[10px] text-slate-400 px-1">Fabrika Hammadde ve Kritik Yarı Mamul Emniyet Stokları</div>
+                <div class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                    <div class="text-[10px] text-zinc-500 px-0.5 pb-1">Emniyet Stokları</div>
                     ${itemsHtml}
                 </div>
             `;
         }
 
         return `
-            <div class="glass-panel rounded-2xl p-4 border ${isCrit ? 'border-rose-500/70' : isWarn ? 'border-amber-500/60' : 'border-slate-800/90'} flex flex-col justify-between">
+            <div class="surface-card rounded-xl p-4 border ${isCrit ? 'border-rose-500/40' : isWarn ? 'border-amber-500/35' : 'border-white/[0.08]'} flex flex-col justify-between">
                 <div>
-                    <!-- Factory Header -->
                     <div class="flex items-start justify-between gap-2 mb-3">
-                        <div onclick="focusMapOn(${plant.latitude}, ${plant.longitude}, 9)" class="cursor-pointer group">
-                            <span class="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-bold group-hover:underline">
-                                <i class="fa-solid fa-location-dot mr-1"></i>${plant.city}
+                        <div onclick="focusMapOn(${Number(plant.latitude)}, ${Number(plant.longitude)}, 9)" class="cursor-pointer group">
+                            <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 group-hover:text-sky-400 transition-colors">
+                                ${escapeHtml(plant.city)}
                             </span>
-                            <h3 class="font-extrabold text-base text-white group-hover:text-cyan-300 transition-colors">${plant.name}</h3>
+                            <h3 class="font-semibold text-sm text-white group-hover:text-sky-300 transition-colors mt-0.5">${escapeHtml(plant.name)}</h3>
                         </div>
                         ${statusBadge}
                     </div>
 
-                    <!-- Capacity & Workforce Gauges -->
-                    <div class="grid grid-cols-2 gap-2.5 mb-3">
-                        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
-                            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
-                                <span>Üretim Hat Yükü</span>
-                                <span class="font-mono font-bold text-white">%${plant.activeCapacityPercent.toFixed(1)}</span>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-white/[0.06]">
+                            <div class="flex justify-between text-[11px] text-zinc-400 mb-1.5">
+                                <span>Hat Yükü</span>
+                                <span class="font-mono font-semibold text-white">%${plant.activeCapacityPercent.toFixed(1)}</span>
                             </div>
-                            <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
                                 <div class="${capBarColor} h-full rounded-full transition-all duration-500" style="width: ${capPercent}%"></div>
                             </div>
                         </div>
-                        <div class="bg-slate-950/70 p-2.5 rounded-xl border border-slate-800/80">
-                            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
-                                <span>Personel Kadrosu</span>
-                                <span class="font-mono font-bold text-white">${activeWorkersInPlant.length} / ${plant.requiredWorkerCount} Kişi</span>
+                        <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-white/[0.06]">
+                            <div class="flex justify-between text-[11px] text-zinc-400 mb-1">
+                                <span>Kadro</span>
+                                <span class="font-mono font-semibold text-white">${activeWorkersInPlant.length}/${plant.requiredWorkerCount}</span>
                             </div>
-                            <div class="text-[10px] ${activeWorkersInPlant.length > plant.requiredWorkerCount ? 'text-emerald-400' : 'text-cyan-300'} font-medium">
+                            <div class="text-[10px] ${activeWorkersInPlant.length > plant.requiredWorkerCount ? 'text-emerald-400' : 'text-zinc-400'} truncate">
                                 ${activeWorkersInPlant.length > plant.requiredWorkerCount
-                                    ? `+${activeWorkersInPlant.length - plant.requiredWorkerCount} Destek Verebilir Kadro`
-                                    : 'Optimal Vardiya Dengesi'}
+                                    ? `+${activeWorkersInPlant.length - plant.requiredWorkerCount} Destek Verebilir`
+                                    : 'Vardiya Dengede'}
                             </div>
                         </div>
                     </div>
 
                     ${transferBannerHtml}
 
-                    <!-- Interactive 3-Button Switcher Inside Factory Card -->
-                    <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-800 mb-3">
+                    <div class="grid grid-cols-3 gap-1 bg-zinc-900/90 p-1 rounded-lg border border-white/[0.06] mb-3">
                         <button onclick="switchPlantSubTab('${plantCode}', 'vehicles')"
-                                class="py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeSubTab === 'vehicles' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-900'}">
-                            <i class="fa-solid fa-truck-plane"></i> Taşıma Araçları (${fleet.total})
+                                class="py-1.5 px-2 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${activeSubTab === 'vehicles' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'}">
+                            Filo (${fleet.total})
                         </button>
                         <button onclick="switchPlantSubTab('${plantCode}', 'workers')"
-                                class="py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeSubTab === 'workers' ? 'bg-amber-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white hover:bg-slate-900'}">
-                            <i class="fa-solid fa-users"></i> İşçi Listesi (${activeWorkersInPlant.length})
+                                class="py-1.5 px-2 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${activeSubTab === 'workers' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'}">
+                            İşçiler (${activeWorkersInPlant.length})
                         </button>
                         <button onclick="switchPlantSubTab('${plantCode}', 'stock')"
-                                class="py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${activeSubTab === 'stock' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-900'}">
-                            <i class="fa-solid fa-boxes-stacked"></i> Stok & Üretim (${(plant.inventoryItems || []).length})
+                                class="py-1.5 px-2 rounded-md text-[11px] font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer ${activeSubTab === 'stock' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'}">
+                            Stok (${(plant.inventoryItems || []).length})
                         </button>
                     </div>
 
-                    <!-- Dynamic Tab Content -->
                     ${subTabContentHtml}
                 </div>
             </div>
@@ -964,43 +1044,43 @@ function openVehicleDetailModal(type, code) {
             <div class="grid grid-cols-2 gap-2.5 bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Araç Kodu / Plaka</div>
-                    <div class="font-bold text-white font-mono">${lv.vehicleCode} • ${lv.plateNumber}</div>
+                    <div class="font-bold text-white font-mono">${escapeHtml(lv.vehicleCode)} • ${escapeHtml(lv.plateNumber)}</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Sürücü & İletişim</div>
-                    <div class="font-bold text-white">${lv.driverName}</div>
-                    <div class="text-[10px] text-cyan-300 font-mono">${lv.driverPhone}</div>
+                    <div class="font-bold text-white">${escapeHtml(lv.driverName)}</div>
+                    <div class="text-[10px] text-cyan-300 font-mono">${escapeHtml(lv.driverPhone)}</div>
                 </div>
             </div>
             <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div>
                     <div class="text-[10px] text-slate-400">Taşınan Kaynak / Yük</div>
-                    <div class="font-bold text-cyan-300 text-sm">${lv.cargoDescription}</div>
-                    <div class="text-xs text-white font-mono mt-0.5">Miktar: ${lv.quantityText}</div>
+                    <div class="font-bold text-cyan-300 text-sm">${escapeHtml(lv.cargoDescription)}</div>
+                    <div class="text-xs text-white font-mono mt-0.5">Miktar: ${escapeHtml(lv.quantityText)}</div>
                 </div>
                 <div class="pt-2 border-t border-slate-800/80 grid grid-cols-2 gap-2">
                     <div>
                         <div class="text-[10px] text-slate-400">Çıkış Noktası</div>
-                        <div class="font-semibold text-slate-200">${lv.originLocation}</div>
+                        <div class="font-semibold text-slate-200">${escapeHtml(lv.originLocation)}</div>
                     </div>
                     <div>
                         <div class="text-[10px] text-slate-400">Varış Fabrikası</div>
-                        <div class="font-bold text-white">${lv.destinationLocation}</div>
+                        <div class="font-bold text-white">${escapeHtml(lv.destinationLocation)}</div>
                     </div>
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-2 text-center bg-slate-950 p-2.5 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Anlık Hız</div>
-                    <div class="font-mono font-bold text-white">${lv.speedKmh} km/s</div>
+                    <div class="font-mono font-bold text-white">${Number(lv.speedKmh)} km/s</div>
                 </div>
                 <div class="border-x border-slate-800">
                     <div class="text-[10px] text-slate-400">Konum Koordinatı</div>
-                    <div class="font-mono font-bold text-slate-200">${lv.latitude.toFixed(3)}, ${lv.longitude.toFixed(3)}</div>
+                    <div class="font-mono font-bold text-slate-200">${Number(lv.latitude).toFixed(3)}, ${Number(lv.longitude).toFixed(3)}</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Tahmini Varış</div>
-                    <div class="font-bold text-emerald-400">${lv.eta}</div>
+                    <div class="font-bold text-emerald-400">${escapeHtml(lv.eta)}</div>
                 </div>
             </div>
         `;
@@ -1023,43 +1103,43 @@ function openVehicleDetailModal(type, code) {
             <div class="grid grid-cols-2 gap-2.5 bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Uçuş Kodu / Kayıt</div>
-                    <div class="font-bold text-white font-mono">${a.callsign} (${a.icao24})</div>
+                    <div class="font-bold text-white font-mono">${escapeHtml(a.callsign)} (${escapeHtml(a.icao24)})</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Operatör & Ekip</div>
-                    <div class="font-bold text-white">${a.pilotOrOperator || 'Hava Kargo Filosu'}</div>
-                    <div class="text-[10px] text-amber-300">${a.originCountry}</div>
+                    <div class="font-bold text-white">${escapeHtml(a.pilotOrOperator || 'Hava Kargo Filosu')}</div>
+                    <div class="text-[10px] text-amber-300">${escapeHtml(a.originCountry)}</div>
                 </div>
             </div>
             <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div>
                     <div class="text-[10px] text-slate-400">Taşınan Kritik Komponent</div>
-                    <div class="font-bold text-cyan-300 text-sm">${a.cargoType}</div>
+                    <div class="font-bold text-cyan-300 text-sm">${escapeHtml(a.cargoType)}</div>
                 </div>
                 <div class="pt-2 border-t border-slate-800/80 grid grid-cols-2 gap-2">
                     <div>
                         <div class="text-[10px] text-slate-400">Kalkış Havalimanı</div>
-                        <div class="font-semibold text-slate-200">${a.originAirport || 'Avrupa Kargo Hub'}</div>
+                        <div class="font-semibold text-slate-200">${escapeHtml(a.originAirport || 'Avrupa Kargo Hub')}</div>
                     </div>
                     <div>
                         <div class="text-[10px] text-slate-400">Hedef Tesis & Havalimanı</div>
-                        <div class="font-bold text-white">${a.destinationAirport}</div>
-                        <div class="text-[10px] text-cyan-400">${a.targetPlantName}</div>
+                        <div class="font-bold text-white">${escapeHtml(a.destinationAirport)}</div>
+                        <div class="text-[10px] text-cyan-400">${escapeHtml(a.targetPlantName)}</div>
                     </div>
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-2 text-center bg-slate-950 p-2.5 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Seyir İrtifası</div>
-                    <div class="font-mono font-bold text-white">${a.altitudeMeters} m</div>
+                    <div class="font-mono font-bold text-white">${Number(a.altitudeMeters)} m</div>
                 </div>
                 <div class="border-x border-slate-800">
                     <div class="text-[10px] text-slate-400">Hız / Yön</div>
-                    <div class="font-mono font-bold text-slate-200">${a.velocityKnots} kn (${a.heading}°)</div>
+                    <div class="font-mono font-bold text-slate-200">${Number(a.velocityKnots)} kn (${Number(a.heading)}°)</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Sevkiyat Durumu</div>
-                    <div class="font-bold ${a.status === 'Critical' ? 'text-rose-400' : 'text-emerald-400'}">${a.eta}</div>
+                    <div class="font-bold ${a.status === 'Critical' ? 'text-rose-400' : 'text-emerald-400'}">${escapeHtml(a.eta)}</div>
                 </div>
             </div>
         `;
@@ -1082,42 +1162,42 @@ function openVehicleDetailModal(type, code) {
             <div class="grid grid-cols-2 gap-2.5 bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Gemi Adı & Deniz Kodu</div>
-                    <div class="font-bold text-white font-mono">${v.vesselName} • ${v.mmsi}</div>
+                    <div class="font-bold text-white font-mono">${escapeHtml(v.vesselName)} • ${escapeHtml(v.mmsi)}</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Deniz Acentesi & Kaptan</div>
-                    <div class="font-bold text-white">${v.captainOrAgency || 'Deniz Lojistik Hattı'}</div>
+                    <div class="font-bold text-white">${escapeHtml(v.captainOrAgency || 'Deniz Lojistik Hattı')}</div>
                 </div>
             </div>
             <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
                 <div>
                     <div class="text-[10px] text-slate-400">Konteyner Yük Manifestosu</div>
-                    <div class="font-bold text-cyan-300 text-sm">${v.cargoManifest}</div>
+                    <div class="font-bold text-cyan-300 text-sm">${escapeHtml(v.cargoManifest)}</div>
                 </div>
                 <div class="pt-2 border-t border-slate-800/80 grid grid-cols-2 gap-2">
                     <div>
                         <div class="text-[10px] text-slate-400">Çıkış Limanı</div>
-                        <div class="font-semibold text-slate-200">${v.originPort}</div>
+                        <div class="font-semibold text-slate-200">${escapeHtml(v.originPort)}</div>
                     </div>
                     <div>
                         <div class="text-[10px] text-slate-400">Varış Limanı & Fabrika</div>
-                        <div class="font-bold text-white">${v.destinationPort}</div>
-                        <div class="text-[10px] text-cyan-400">${v.targetPlantName}</div>
+                        <div class="font-bold text-white">${escapeHtml(v.destinationPort)}</div>
+                        <div class="text-[10px] text-cyan-400">${escapeHtml(v.targetPlantName)}</div>
                     </div>
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-2 text-center bg-slate-950 p-2.5 rounded-xl border border-slate-800">
                 <div>
                     <div class="text-[10px] text-slate-400">Gemi Hızı</div>
-                    <div class="font-mono font-bold text-white">${v.speedKnots} Deniz Mili/s</div>
+                    <div class="font-mono font-bold text-white">${Number(v.speedKnots)} Deniz Mili/s</div>
                 </div>
                 <div class="border-x border-slate-800">
                     <div class="text-[10px] text-slate-400">Rota Açısı</div>
-                    <div class="font-mono font-bold text-slate-200">${v.course}°</div>
+                    <div class="font-mono font-bold text-slate-200">${Number(v.course)}°</div>
                 </div>
                 <div>
                     <div class="text-[10px] text-slate-400">Tahmini Varış (ETA)</div>
-                    <div class="font-bold ${v.status === 'StrikeAlert' ? 'text-rose-400' : 'text-emerald-400'}">${v.eta}</div>
+                    <div class="font-bold ${v.status === 'StrikeAlert' ? 'text-rose-400' : 'text-emerald-400'}">${escapeHtml(v.eta)}</div>
                 </div>
             </div>
         `;
@@ -1157,8 +1237,8 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
     // 1. Önerilen Malzeme Sevkiyat Kararları
     proposedMaterials.forEach(m => {
         const netRoi = m.preventedPenaltyAmount - m.estimatedCost;
-        const fromCity = m.fromPlant?.city || (resolvePlantKey(m.fromPlant, m.fromPlantId) === 'PLANT-C' ? 'İzmir (Çiğli)' : 'Bursa (Nilüfer)');
-        const toCity = m.toPlant?.city || 'Kocaeli (Gebze)';
+        const fromCity = resolvePlantCity(m.fromPlant, m.fromPlantId);
+        const toCity = resolvePlantCity(m.toPlant, m.toPlantId);
 
         cardsHtml += `
             <div class="glass-panel rounded-2xl p-4 border-2 border-rose-500/80 shadow-xl shadow-rose-950/40 relative overflow-hidden">
@@ -1167,38 +1247,38 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
                         <span class="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
                         Acil Kaynak Kaydırma Önerisi
                     </span>
-                    <span class="text-[11px] font-mono text-slate-400">SEVKİYAT #${m.id}</span>
+                    <span class="text-[11px] font-mono text-slate-400">SEVKİYAT #${Number(m.id)}</span>
                 </div>
 
                 <h4 class="font-bold text-sm text-white mb-1">
-                    ${m.materialName} (${m.materialCode}) — Fabrikalar Arası Sevkiyat
+                    ${escapeHtml(m.materialName)} (${escapeHtml(m.materialCode)}) — Fabrikalar Arası Sevkiyat
                 </h4>
                 <p class="text-xs text-slate-300 mb-3 leading-relaxed">
-                    Dış tedarik gecikmesi nedeniyle <strong>${m.toPlant?.name || 'Tesis A'}</strong> üretim hattında duruş riski tespit edildi.
-                    En uygun emniyet stoğu <strong>${m.fromPlant?.name || fromCity}</strong> deposunda belirlendi.
+                    Dış tedarik gecikmesi nedeniyle <strong>${escapeHtml(m.toPlant?.name || toCity)}</strong> üretim hattında duruş riski tespit edildi.
+                    En uygun emniyet stoğu <strong>${escapeHtml(m.fromPlant?.name || fromCity)}</strong> deposunda belirlendi.
                 </p>
 
                 <div class="grid grid-cols-3 gap-2 mb-3 text-center bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
                     <div>
                         <div class="text-[10px] text-slate-400">Sevk Miktarı</div>
-                        <div class="text-xs font-extrabold font-mono text-cyan-300">${m.quantity.toLocaleString('tr-TR')} ${m.unit}</div>
+                        <div class="text-xs font-extrabold font-mono text-cyan-300">${Number(m.quantity).toLocaleString('tr-TR')} ${escapeHtml(m.unit)}</div>
                     </div>
                     <div class="border-x border-slate-800">
                         <div class="text-[10px] text-slate-400">Nakliye Maliyeti</div>
-                        <div class="text-xs font-extrabold font-mono text-amber-400">€${m.estimatedCost.toLocaleString('tr-TR')}</div>
+                        <div class="text-xs font-extrabold font-mono text-amber-400">€${Number(m.estimatedCost).toLocaleString('tr-TR')}</div>
                     </div>
                     <div>
                         <div class="text-[10px] text-slate-400">Önlenen Ceza</div>
-                        <div class="text-xs font-extrabold font-mono text-emerald-400">€${m.preventedPenaltyAmount.toLocaleString('tr-TR')}</div>
+                        <div class="text-xs font-extrabold font-mono text-emerald-400">€${Number(m.preventedPenaltyAmount).toLocaleString('tr-TR')}</div>
                     </div>
                 </div>
 
                 <div class="flex items-center justify-between text-[11px] text-slate-300 mb-3 px-1">
-                    <span class="font-bold text-cyan-300"><i class="fa-solid fa-route mr-1"></i> Güzergah: ${fromCity} ➔ ${toCity}</span>
-                    <span class="text-emerald-400 font-bold">Net Tasarruf: +€${netRoi.toLocaleString('tr-TR')}</span>
+                    <span class="font-bold text-cyan-300"><i class="fa-solid fa-route mr-1"></i> Güzergah: ${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)}</span>
+                    <span class="text-emerald-400 font-bold">Net Tasarruf: +€${Number(netRoi).toLocaleString('tr-TR')}</span>
                 </div>
 
-                <button onclick="approveMaterialTransfer(${m.id}, '${fromCity}', '${toCity}')"
+                <button onclick="approveMaterialTransfer(${Number(m.id)}, ${escapeAttrArg(fromCity)}, ${escapeAttrArg(toCity)})"
                         class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer">
                     <i class="fa-solid fa-truck-fast"></i> Sevkiyatı Onayla ve Ekspres Aracı Yola Çıkar
                 </button>
@@ -1206,86 +1286,95 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
         `;
     });
 
-    // 2. Önerilen İş Gücü Görevlendirme Kararı
+    // 2. Önerilen İş Gücü Görevlendirme Kararları (Hedef fabrikaya göre ayrı kartlar)
     if (proposedWorkers.length > 0) {
-        const primary = proposedWorkers[0];
-        const targetPlantName = primary.toPlant?.name || 'Hedef Fabrika';
-        const targetCityName = primary.toPlant?.city || 'Kocaeli';
-        const roleName = primary.worker?.roleOrSkill || 'Uzman Operatör';
-        const totalCost = proposedWorkers.reduce((acc, w) => acc + w.estimatedCost, 0);
-        const totalSaved = proposedWorkers.reduce((acc, w) => acc + w.preventedPenaltyAmount, 0);
-        const workerBadges = proposedWorkers.map(w =>
-            `<span class="px-2 py-1 rounded-lg bg-slate-900 border border-amber-500/40 text-[11px] text-amber-200 font-medium flex items-center gap-1.5">
-                <i class="fa-solid fa-user-check text-amber-400"></i> ${w.worker?.fullName || 'Uzman Operatör'} 
-                <span class="text-[10px] font-mono text-cyan-300">(${w.fromPlant?.city || 'Donör'} • Skor: ${w.worker?.skillScore || 90})</span>
-             </span>`
-        ).join('');
+        const workersByTarget = {};
+        proposedWorkers.forEach(w => {
+            const key = w.toPlantId || 1;
+            if (!workersByTarget[key]) workersByTarget[key] = [];
+            workersByTarget[key].push(w);
+        });
 
-        cardsHtml += `
-            <div class="glass-panel rounded-2xl p-4 border-2 border-amber-500/80 shadow-xl shadow-amber-950/30">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-950 text-amber-300 border border-amber-500 uppercase tracking-wider flex items-center gap-1.5">
-                        <i class="fa-solid fa-users-gear"></i>
-                        Fabrikalar Arası Uzman Personel Takviyesi
-                    </span>
-                    <span class="text-[11px] font-mono text-slate-400">${proposedWorkers.length} UZMAN PERSONEL</span>
-                </div>
+        Object.values(workersByTarget).forEach(group => {
+            const primary = group[0];
+            const targetPlantName = primary.toPlant?.name || 'Hedef Fabrika';
+            const targetCityName = resolvePlantCity(primary.toPlant, primary.toPlantId);
+            const roleName = primary.worker?.roleOrSkill || 'Uzman Operatör';
+            const totalCost = group.reduce((acc, w) => acc + Number(w.estimatedCost || 0), 0);
+            const totalSaved = group.reduce((acc, w) => acc + Number(w.preventedPenaltyAmount || 0), 0);
+            const workerBadges = group.map(w =>
+                `<span class="px-2 py-1 rounded-lg bg-slate-900 border border-amber-500/40 text-[11px] text-amber-200 font-medium flex items-center gap-1.5">
+                    <i class="fa-solid fa-user-check text-amber-400"></i> ${escapeHtml(w.worker?.fullName || 'Uzman Operatör')}
+                    <span class="text-[10px] font-mono text-cyan-300">(${escapeHtml(w.fromPlant?.city || resolvePlantCity(w.fromPlant, w.fromPlantId))} • Skor: ${Number(w.worker?.skillScore || 90)})</span>
+                 </span>`
+            ).join('');
 
-                <h4 class="font-bold text-sm text-white mb-1">
-                    ${targetPlantName} — ${roleName} Görevlendirmesi
-                </h4>
-                <p class="text-xs text-slate-300 mb-2.5">
-                    <strong>${targetCityName}</strong> tesisindeki iş gücü darboğazını çözmek için rotasyona uygun sözleşmesi bulunan en yüksek yetkinlikli uzmanlar belirlendi:
-                </p>
-
-                <div class="flex flex-wrap gap-1.5 mb-3">
-                    ${workerBadges}
-                </div>
-
-                <div class="grid grid-cols-2 gap-2 mb-3 text-center bg-slate-950/80 p-2 rounded-xl border border-slate-800 text-xs">
-                    <div>
-                        <span class="text-slate-400 text-[10px] block">7 Günlük Görevlendirme & Ulaşım</span>
-                        <span class="font-mono font-bold text-amber-400">€${totalCost.toLocaleString('tr-TR')}</span>
+            cardsHtml += `
+                <div class="glass-panel rounded-2xl p-4 border-2 border-amber-500/80 shadow-xl shadow-amber-950/30">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-950 text-amber-300 border border-amber-500 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-users-gear"></i>
+                            Fabrikalar Arası Uzman Personel Takviyesi
+                        </span>
+                        <span class="text-[11px] font-mono text-slate-400">${group.length} UZMAN PERSONEL</span>
                     </div>
-                    <div class="border-l border-slate-800">
-                        <span class="text-slate-400 text-[10px] block">Önlenen Teslimat Cezası</span>
-                        <span class="font-mono font-bold text-emerald-400">€${totalSaved.toLocaleString('tr-TR')}</span>
-                    </div>
-                </div>
 
-                <button onclick="approveWorkerTransfer(${primary.id})"
-                        class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer">
-                    <i class="fa-solid fa-user-check"></i> ${proposedWorkers.length} Uzman Personelin Görevlendirmesini Onayla
-                </button>
-            </div>
-        `;
+                    <h4 class="font-bold text-sm text-white mb-1">
+                        ${escapeHtml(targetPlantName)} — ${escapeHtml(roleName)} Görevlendirmesi
+                    </h4>
+                    <p class="text-xs text-slate-300 mb-2.5">
+                        <strong>${escapeHtml(targetCityName)}</strong> tesisindeki iş gücü darboğazını çözmek için rotasyona uygun sözleşmesi bulunan en yüksek yetkinlikli uzmanlar belirlendi:
+                    </p>
+
+                    <div class="flex flex-wrap gap-1.5 mb-3">
+                        ${workerBadges}
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 mb-3 text-center bg-slate-950/80 p-2 rounded-xl border border-slate-800 text-xs">
+                        <div>
+                            <span class="text-slate-400 text-[10px] block">7 Günlük Görevlendirme & Ulaşım</span>
+                            <span class="font-mono font-bold text-amber-400">€${totalCost.toLocaleString('tr-TR')}</span>
+                        </div>
+                        <div class="border-l border-slate-800">
+                            <span class="text-slate-400 text-[10px] block">Önlenen Teslimat Cezası</span>
+                            <span class="font-mono font-bold text-emerald-400">€${totalSaved.toLocaleString('tr-TR')}</span>
+                        </div>
+                    </div>
+
+                    <button onclick="approveWorkerTransfer(${Number(primary.id)})"
+                            class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer">
+                        <i class="fa-solid fa-user-check"></i> ${group.length} Uzman Personelin Görevlendirmesini Onayla
+                    </button>
+                </div>
+            `;
+        });
     }
 
     // 3. Aktif Yoldaki Sevkiyatlar
     inTransitMaterials.forEach(m => {
-        const fromCity = m.fromPlant?.city || (resolvePlantKey(m.fromPlant, m.fromPlantId) === 'PLANT-C' ? 'İzmir (Çiğli)' : 'Bursa (Nilüfer)');
-        const toCity = m.toPlant?.city || 'Kocaeli (Gebze)';
+        const fromCity = resolvePlantCity(m.fromPlant, m.fromPlantId);
+        const toCity = resolvePlantCity(m.toPlant, m.toPlantId);
         cardsHtml += `
             <div class="glass-panel rounded-2xl p-3.5 border border-emerald-500/60 bg-emerald-950/15">
                 <div class="flex items-center justify-between mb-1">
                     <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/50">
                         <i class="fa-solid fa-truck-fast mr-1"></i> EKSPRES SEVKİYAT YOLDA
                     </span>
-                    <span class="text-xs font-mono font-bold text-emerald-400">+€${m.preventedPenaltyAmount.toLocaleString('tr-TR')} Korundu</span>
+                    <span class="text-xs font-mono font-bold text-emerald-400">+€${Number(m.preventedPenaltyAmount).toLocaleString('tr-TR')} Korundu</span>
                 </div>
                 <div class="text-xs font-bold text-white">
-                    ${fromCity} ➔ ${toCity}: ${m.quantity} ${m.unit} ${m.materialName}
+                    ${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)}: ${m.quantity} ${escapeHtml(m.unit)} ${escapeHtml(m.materialName)}
                 </div>
                 <div class="text-[11px] text-slate-300 mt-0.5">
-                    Taşıma aracı harita üzerinde <strong>${fromCity} ➔ ${toCity}</strong> güzergahında canlı takip ediliyor.
+                    Taşıma aracı harita üzerinde <strong>${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)}</strong> güzergahında canlı takip ediliyor.
                 </div>
             </div>
         `;
     });
 
     if (inTransitWorkers.length > 0) {
-        const sourceCities = [...new Set(inTransitWorkers.map(w => w.fromPlant?.city || (resolvePlantKey(w.fromPlant, w.fromPlantId) === 'PLANT-C' ? 'İzmir' : 'Bursa')))].join(' / ');
-        const targetCities = [...new Set(inTransitWorkers.map(w => w.toPlant?.city || 'Kocaeli'))].join(' / ');
+        const sourceCities = [...new Set(inTransitWorkers.map(w => resolvePlantCity(w.fromPlant, w.fromPlantId)))].join(' / ');
+        const targetCities = [...new Set(inTransitWorkers.map(w => resolvePlantCity(w.toPlant, w.toPlantId)))].join(' / ');
 
         cardsHtml += `
             <div class="glass-panel rounded-2xl p-3.5 border border-cyan-500/60 bg-cyan-950/15">
@@ -1296,7 +1385,7 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
                     <span class="text-xs font-mono font-bold text-cyan-300">${inTransitWorkers.length} Uzman Görevde</span>
                 </div>
                 <div class="text-xs font-bold text-white">
-                    ${sourceCities} ➔ ${targetCities}: Uzman Operatör Ekibi Görevlendirildi
+                    ${escapeHtml(sourceCities)} ➔ ${escapeHtml(targetCities)}: Uzman Operatör Ekibi Görevlendirildi
                 </div>
             </div>
         `;
@@ -1304,13 +1393,13 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
 
     if (!cardsHtml) {
         cardsHtml = `
-            <div class="glass-panel rounded-2xl p-5 text-center border border-slate-800/90">
-                <div class="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-2.5 text-emerald-400 text-lg">
+            <div class="rounded-lg p-5 text-center border border-white/[0.06] bg-zinc-900/50">
+                <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-2.5 text-emerald-400 text-sm">
                     <i class="fa-solid fa-shield-halved"></i>
                 </div>
-                <h4 class="font-bold text-sm text-white">Tüm Üretim Tesisleri ve Tedarik Hatları Dengede</h4>
-                <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto leading-relaxed">
-                    Kara, hava ve deniz sevkiyatları planlanan takvimde ilerliyor. Olası tedarik veya iş gücü aksaklıklarını simüle etmek için üst menüdeki senaryo butonlarını kullanabilirsiniz.
+                <h4 class="font-medium text-xs text-zinc-100">Tüm Tesisler ve Tedarik Hatları Dengede</h4>
+                <p class="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                    Sevkiyatlar planlanan takvimde ilerliyor. Kriz simülasyonu için üst çubuktaki senaryoları kullanabilirsiniz.
                 </p>
             </div>
         `;
@@ -1333,13 +1422,13 @@ function renderPrescriptiveDecisionCenter(materialTransfers, workerTransfers, al
                 return `
                     <div class="p-3 rounded-xl bg-slate-950/70 border ${a.isResolved ? 'border-slate-800/70 opacity-75' : isCrit ? 'border-rose-500/50' : 'border-amber-500/50'} text-xs transition-all">
                         <div class="flex items-center justify-between gap-2 mb-1">
-                            <span class="font-bold text-slate-100 truncate">${a.title}</span>
+                            <span class="font-bold text-slate-100 truncate">${escapeHtml(a.title)}</span>
                             <div class="flex items-center gap-1.5 shrink-0">
                                 ${badge}
                                 <span class="text-[10px] font-mono text-slate-500">${new Date(a.createdAt).toLocaleTimeString('tr-TR')}</span>
                             </div>
                         </div>
-                        <p class="text-[11px] text-slate-400 leading-snug">${a.description}</p>
+                        <p class="text-[11px] text-slate-400 leading-snug">${escapeHtml(a.description)}</p>
                     </div>
                 `;
             }).join('');
@@ -1354,8 +1443,8 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
     const rows = [];
 
     (materialTransfers || []).forEach(m => {
-        const fromCity = m.fromPlant?.city || (resolvePlantKey(m.fromPlant, m.fromPlantId) === 'PLANT-C' ? 'İzmir (Çiğli)' : 'Bursa (Nilüfer)');
-        const toCity = m.toPlant?.city || 'Kocaeli (Gebze)';
+        const fromCity = resolvePlantCity(m.fromPlant, m.fromPlantId);
+        const toCity = resolvePlantCity(m.toPlant, m.toPlantId);
         const isProp = m.status === 'Proposed';
 
         rows.push(`
@@ -1366,9 +1455,9 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
                     </div>
                     <div>
                         <div class="font-bold text-white flex items-center gap-2">
-                            <span>Malzeme Sevkiyatı: ${m.materialName} (${m.quantity} ${m.unit})</span>
+                            <span>Malzeme Sevkiyatı: ${escapeHtml(m.materialName)} (${Number(m.quantity)} ${escapeHtml(m.unit)})</span>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-700">
-                                ${fromCity} ➔ ${toCity}
+                                ${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)}
                             </span>
                         </div>
                         <div class="text-[11px] text-slate-400 mt-0.5">
@@ -1378,13 +1467,13 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
                 </div>
                 <div>
                     ${isProp ? `
-                        <button onclick="approveMaterialTransfer(${m.id}, '${fromCity}', '${toCity}')"
+                        <button onclick="approveMaterialTransfer(${Number(m.id)}, ${escapeAttrArg(fromCity)}, ${escapeAttrArg(toCity)})"
                                 class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer">
                             <i class="fa-solid fa-check mr-1"></i> Onayla & Başlat
                         </button>
                     ` : `
                         <span class="px-2.5 py-1 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-600/50 font-bold text-[11px]">
-                            <i class="fa-solid fa-route mr-1"></i> Araç Yolda (${fromCity} ➔ ${toCity})
+                            <i class="fa-solid fa-route mr-1"></i> Araç Yolda (${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)})
                         </span>
                     `}
                 </div>
@@ -1393,8 +1482,9 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
     });
 
     (workerTransfers || []).forEach(o => {
-        const fromCity = o.fromPlant?.city || (resolvePlantKey(o.fromPlant, o.fromPlantId) === 'PLANT-C' ? 'İzmir (Çiğli)' : 'Bursa (Nilüfer)');
-        const toCity = o.toPlant?.city || 'Kocaeli (Gebze)';
+        if (o.status === 'Cancelled') return;
+        const fromCity = resolvePlantCity(o.fromPlant, o.fromPlantId);
+        const toCity = resolvePlantCity(o.toPlant, o.toPlantId);
         const isProp = o.status === 'Proposed';
         const isActive = o.status === 'InTransit';
 
@@ -1406,21 +1496,21 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
                     </div>
                     <div>
                         <div class="font-bold text-white flex items-center gap-2">
-                            <span>Personel Görevlendirme: ${o.worker?.fullName || 'Uzman Operatör'} (${o.worker?.roleOrSkill || 'Uzman'})</span>
+                            <span>Personel Görevlendirme: ${escapeHtml(o.worker?.fullName || 'Uzman Operatör')} (${escapeHtml(o.worker?.roleOrSkill || 'Uzman')})</span>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-700">
-                                ${fromCity} ➔ ${toCity}
+                                ${escapeHtml(fromCity)} ➔ ${escapeHtml(toCity)}
                             </span>
                         </div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">${o.reason}</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(o.reason)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
                     ${isProp ? `
-                        <button onclick="approveWorkerTransfer(${o.id})" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer">
+                        <button onclick="approveWorkerTransfer(${Number(o.id)})" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer">
                             <i class="fa-solid fa-check mr-1"></i> Onayla & Görevlendir
                         </button>
                     ` : isActive ? `
-                        <button onclick="recallWorker(${o.id})" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-cyan-700 text-slate-200 border border-slate-700 font-bold text-xs cursor-pointer">
+                        <button onclick="recallWorker(${Number(o.id)})" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-cyan-700 text-slate-200 border border-slate-700 font-bold text-xs cursor-pointer">
                             <i class="fa-solid fa-rotate-left mr-1"></i> Görevi Tamamla & Ana Fabrikaya Döndür
                         </button>
                     ` : `
@@ -1438,6 +1528,19 @@ function renderActiveOperationsSummary(materialTransfers, workerTransfers) {
     }
 }
 
+async function parseApiError(res, fallback) {
+    try {
+        const data = await res.json();
+        return data?.error || data?.message || fallback;
+    } catch (_) {
+        return `${fallback} (HTTP ${res.status})`;
+    }
+}
+
+function isLiveStreamConnected() {
+    return Boolean(connection && window.signalR && connection.state === signalR.HubConnectionState.Connected);
+}
+
 // ==========================================
 // 8. SİMÜLASYON VE ONAY AKSİYONLARI
 // ==========================================
@@ -1448,14 +1551,19 @@ async function triggerRotterdamSimulation() {
             const data = await res.json();
             playAlertTone('critical');
             showToast('Deniz Lojistik Krizi Başlatıldı', data.scenarioTitle || 'Deniz sevkiyat gecikmesi tespit edildi. Alternatif stok aranıyor...', 'critical');
-            setTimeout(() => {
-                fetchState();
-                fetchRadar();
-                focusMapOn(40.55, 28.9, 8);
-            }, 350);
+            if (!isLiveStreamConnected()) {
+                setTimeout(() => {
+                    fetchState();
+                    fetchRadar();
+                }, 350);
+            }
+            focusMapOn(40.55, 28.9, 8);
+        } else {
+            showToast('Senaryo Başlatılamadı', await parseApiError(res, 'Deniz krizi başlatılırken hata oluştu.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1466,14 +1574,19 @@ async function triggerAirCargoSimulation() {
             const data = await res.json();
             playAlertTone('critical');
             showToast('Hava Kargo Rötarı Başlatıldı', data.scenarioTitle || 'Hava kargo sevkiyatı gecikti. En yakın fabrika emniyet stoğu analiz ediliyor...', 'warning');
-            setTimeout(() => {
-                fetchState();
-                fetchRadar();
-                focusMapOn(39.55, 28.1, 7);
-            }, 350);
+            if (!isLiveStreamConnected()) {
+                setTimeout(() => {
+                    fetchState();
+                    fetchRadar();
+                }, 350);
+            }
+            focusMapOn(39.55, 28.1, 7);
+        } else {
+            showToast('Senaryo Başlatılamadı', await parseApiError(res, 'Hava kargo krizi başlatılırken hata oluştu.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1484,13 +1597,18 @@ async function triggerWorkforceSimulation() {
             const data = await res.json();
             playAlertTone('critical');
             showToast('Personel Darboğazı Başlatıldı', data.scenarioTitle || 'Üretim hattı için rotasyona uygun uzman personel taranıyor...', 'warning');
-            setTimeout(() => {
-                fetchState();
-                fetchWorkforceOverview();
-            }, 350);
+            if (!isLiveStreamConnected()) {
+                setTimeout(() => {
+                    fetchState();
+                    fetchWorkforceOverview();
+                }, 350);
+            }
+        } else {
+            showToast('Senaryo Başlatılamadı', await parseApiError(res, 'Personel darboğazı başlatılırken hata oluştu.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1501,15 +1619,20 @@ async function triggerRandomCrisisSimulation() {
             const data = await res.json();
             playAlertTone('critical');
             showToast('Rastgele Kriz Senaryosu Başlatıldı', data.scenarioTitle || 'Yeni operasyonel kriz tespit edildi, çözüm önerisi hazırlandı.', 'critical');
-            setTimeout(() => {
-                fetchState();
-                fetchWorkforceOverview();
-                fetchRadar();
-                focusMapOn(39.75, 28.35, 7);
-            }, 350);
+            if (!isLiveStreamConnected()) {
+                setTimeout(() => {
+                    fetchState();
+                    fetchWorkforceOverview();
+                    fetchRadar();
+                }, 350);
+            }
+            focusMapOn(39.75, 28.35, 7);
+        } else {
+            showToast('Senaryo Başlatılamadı', await parseApiError(res, 'Rastgele kriz başlatılırken hata oluştu.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1526,22 +1649,30 @@ async function approveMaterialTransfer(orderId, fromCity = '', toCity = '') {
         });
         if (res.ok) {
             playAlertTone('success');
-            const isIzmirRoute = fromCity.toLowerCase().includes('izmir') || fromCity.toLowerCase().includes('İzmir');
+            const isIzmirRoute =
+                fromCity.toLocaleLowerCase('tr-TR').includes('izmir') ||
+                toCity.toLocaleLowerCase('tr-TR').includes('izmir');
             showToast(
                 'Sevkiyat Emri Onaylandı',
                 `${fromCity || 'Donör Fabrika'} ➔ ${toCity || 'Kocaeli'} güzergahında ekspres taşıma aracı yola çıktı!`,
                 'success'
             );
-            await fetchState();
-            await fetchRadar();
+            if (!isLiveStreamConnected()) {
+                await fetchState();
+                await fetchRadar();
+            }
             if (isIzmirRoute) {
                 focusMapOn(39.65, 28.25, 7);
             } else {
                 focusMapOn(40.52, 29.22, 9);
             }
+        } else {
+            playAlertTone('critical');
+            showToast('Onay Hatası', await parseApiError(res, 'Malzeme transferi onaylanamadı.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1559,13 +1690,19 @@ async function approveWorkerTransfer(orderId) {
         if (res.ok) {
             playAlertTone('success');
             showToast('Personel Görevlendirme Onaylandı', 'Uzman operatör ekibi hedef fabrikaya sevk edildi.', 'success');
-            await fetchState();
-            await fetchWorkforceOverview();
-            await fetchRadar();
+            if (!isLiveStreamConnected()) {
+                await fetchState();
+                await fetchWorkforceOverview();
+                await fetchRadar();
+            }
             focusMapOn(39.9, 28.6, 7);
+        } else {
+            playAlertTone('critical');
+            showToast('Onay Hatası', await parseApiError(res, 'Personel görevlendirme onaylanamadı.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1575,13 +1712,18 @@ async function triggerResetSystem() {
         if (res.ok) {
             playAlertTone('info');
             showToast('Operasyon Sıfırlandı', 'Tüm fabrikalar, stoklar, taşıma filosu ve personel kadroları başlangıç durumuna döndürüldü.', 'info');
-            await fetchState();
-            await fetchWorkforceOverview();
-            await fetchRadar();
+            if (!isLiveStreamConnected()) {
+                await fetchState();
+                await fetchWorkforceOverview();
+                await fetchRadar();
+            }
             focusMapOn(39.75, 28.25, 7);
+        } else {
+            showToast('Sıfırlama Hatası', await parseApiError(res, 'Sistem sıfırlanamadı.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1605,7 +1747,21 @@ async function fetchWorkforceOverview() {
 function openSmartWorkforceMatcherModal() {
     const optPlant = document.getElementById('wf-opt-plant');
     if (optPlant && currentState && currentState.plants) {
-        optPlant.innerHTML = currentState.plants.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        optPlant.innerHTML = currentState.plants.map(p => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+    }
+    const optRole = document.getElementById('wf-opt-role');
+    if (optRole) {
+        const rolesFromApi = workforceData?.roles && workforceData.roles.length > 0
+            ? workforceData.roles
+            : [...new Set((currentState?.mobileWorkers || []).map(w => w.roleOrSkill).filter(Boolean))].sort();
+        if (rolesFromApi.length > 0) {
+            optRole.innerHTML = rolesFromApi.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('') +
+                '<option value="Tümü">Tüm Uzmanlık Alanları</option>';
+        }
+    }
+    const resultsBox = document.getElementById('wf-opt-results');
+    if (resultsBox) {
+        resultsBox.innerHTML = `<div class="text-xs text-slate-500 text-center py-3">Kriterleri seçip yukarıdaki butona tıklayarak uygun adayları görüntüleyebilirsiniz.</div>`;
     }
     const modal = document.getElementById('smart-matcher-modal');
     if (modal) {
@@ -1655,27 +1811,30 @@ async function runWorkforceOptimizer() {
 
             box.innerHTML = `
                 <div class="flex items-center justify-between text-xs mb-2">
-                    <span class="font-bold text-emerald-400"><i class="fa-solid fa-circle-check mr-1"></i> ${data.matchedCount} Uygun Uzman Bulundu</span>
-                    <span class="font-mono text-amber-300">Toplam Maliyet: €${data.totalCost.toLocaleString('tr-TR')}</span>
+                    <span class="font-bold text-emerald-400"><i class="fa-solid fa-circle-check mr-1"></i> ${Number(data.matchedCount)} Uygun Uzman Bulundu</span>
+                    <span class="font-mono text-amber-300">Toplam Maliyet: €${Number(data.totalCost).toLocaleString('tr-TR')}</span>
                 </div>
                 <div class="space-y-2">
                     ${data.candidates.map((c, idx) => `
                         <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2 text-xs">
                             <div>
-                                <div class="font-bold text-white">#${idx + 1} ${c.worker.fullName} <span class="text-cyan-400 font-mono">(Yetkinlik: ${c.worker.skillScore}/100)</span></div>
-                                <div class="text-[10px] text-slate-400">${c.worker.currentPlant?.city || 'Bursa'} • ${c.worker.roleOrSkill} • Günlük Harcırah: €${c.dailyAllowance}</div>
+                                <div class="font-bold text-white">#${idx + 1} ${escapeHtml(c.worker.fullName)} <span class="text-cyan-400 font-mono">(Yetkinlik: ${Number(c.worker.skillScore)}/100)</span></div>
+                                <div class="text-[10px] text-slate-400">${escapeHtml(c.worker.currentPlant?.city || 'Bursa')} • ${escapeHtml(c.worker.roleOrSkill)} • Günlük Harcırah: €${Number(c.dailyAllowance)}</div>
                             </div>
-                            <button onclick="quickDispatchWorker(${c.worker.id}, ${targetPlantId}, ${durationDays})"
+                            <button onclick="quickDispatchWorkerFromMatcher(${Number(c.worker.id)}, ${targetPlantId}, ${durationDays})"
                                     class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shrink-0 cursor-pointer">
-                                <i class="fa-solid fa-paper-plane mr-1"></i> Görevlendir (€${c.totalEstimatedCost})
+                                <i class="fa-solid fa-paper-plane mr-1"></i> Görevlendir (€${Number(c.totalEstimatedCost)})
                             </button>
                         </div>
                     `).join('')}
                 </div>
             `;
+        } else {
+            showToast('Eşleştirme Hatası', await parseApiError(res, 'Uygun personel listesi getirilemedi.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1685,18 +1844,23 @@ function attemptLockedWorkerDispatch(fullName) {
 }
 
 function openDispatchModal(workerId) {
-    const pool = workforceData?.workers || currentState?.mobileWorkers || [];
+    const pool = currentState?.mobileWorkers || workforceData?.workers || [];
     const worker = pool.find(w => w.id === workerId);
     if (!worker) return;
 
     document.getElementById('dispatch-worker-id').value = worker.id;
     document.getElementById('dispatch-worker-name').innerText = `${worker.fullName} (${worker.employeeCode})`;
-    document.getElementById('dispatch-worker-meta').innerText = `${worker.roleOrSkill} • Yetkinlik: ${worker.skillScore}/100 • Günlük Harcırah: €${worker.mobilityAllowanceRate} • Mevcut Fabrika: ${worker.currentPlant?.city || 'Bursa'}`;
+    document.getElementById('dispatch-worker-meta').innerText = `${worker.roleOrSkill} • Yetkinlik: ${worker.skillScore}/100 • Günlük Harcırah: €${worker.mobilityAllowanceRate} • Mevcut Fabrika: ${worker.currentPlant?.city || resolvePlantCity(worker.currentPlant, worker.currentPlantId)}`;
+
+    const durationEl = document.getElementById('dispatch-duration-days');
+    if (durationEl) durationEl.value = '7';
+    const reasonEl = document.getElementById('dispatch-reason');
+    if (reasonEl) reasonEl.value = 'Üretim hattı kapasite dengeleme ve uzman personel takviyesi';
 
     const targetSelect = document.getElementById('dispatch-target-plant');
     if (targetSelect && currentState && currentState.plants) {
         const otherPlants = currentState.plants.filter(p => p.id !== worker.currentPlantId);
-        targetSelect.innerHTML = otherPlants.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        targetSelect.innerHTML = otherPlants.map(p => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`).join('');
     }
 
     const modal = document.getElementById('worker-dispatch-modal');
@@ -1720,8 +1884,17 @@ async function confirmDirectWorkerDispatch() {
     const durationDays = parseInt(document.getElementById('dispatch-duration-days').value || '7', 10);
     const reason = document.getElementById('dispatch-reason').value;
 
-    await quickDispatchWorker(workerId, toPlantId, durationDays, reason);
-    closeDispatchModal();
+    const ok = await quickDispatchWorker(workerId, toPlantId, durationDays, reason);
+    if (ok) {
+        closeDispatchModal();
+    }
+}
+
+async function quickDispatchWorkerFromMatcher(workerId, toPlantId, durationDays = 7) {
+    const ok = await quickDispatchWorker(workerId, toPlantId, durationDays);
+    if (ok) {
+        closeSmartWorkforceMatcherModal();
+    }
 }
 
 async function quickDispatchWorker(workerId, toPlantId, durationDays = 7, reason = 'Üretim hattı kapasite dengeleme görevlendirmesi') {
@@ -1747,16 +1920,21 @@ async function quickDispatchWorker(workerId, toPlantId, durationDays = 7, reason
             const workerName = data.order?.worker?.fullName || 'Uzman Personel';
             const targetCity = targetPlantObj?.city || 'Hedef Fabrika';
             showToast('Personel Transfer Ediliyor', `${workerName} ➔ ${targetCity} tesisine atandı ve fabrika kadrosuna eklendi!`, 'success');
-            closeSmartWorkforceMatcherModal();
-            await fetchState();
-            await fetchWorkforceOverview();
-            await fetchRadar();
+            if (!isLiveStreamConnected()) {
+                await fetchState();
+                await fetchWorkforceOverview();
+                await fetchRadar();
+            }
+            return true;
         } else {
             playAlertTone('critical');
             showToast('Görevlendirme Yapılamadı', data.error || 'İşlem gerçekleştirilemedi.', 'critical');
+            return false;
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
+        return false;
     }
 }
 
@@ -1766,12 +1944,18 @@ async function recallWorker(orderId) {
         if (res.ok) {
             playAlertTone('info');
             showToast('Görev Tamamlandı', 'Personel ana fabrikasına döndürüldü ve kadro sayıları güncellendi.', 'info');
-            await fetchState();
-            await fetchWorkforceOverview();
-            await fetchRadar();
+            if (!isLiveStreamConnected()) {
+                await fetchState();
+                await fetchWorkforceOverview();
+                await fetchRadar();
+            }
+        } else {
+            playAlertTone('critical');
+            showToast('Geri Döndürme Hatası', await parseApiError(res, 'Personel geri döndürülemedi.'), 'critical');
         }
     } catch (e) {
         console.error(e);
+        showToast('Bağlantı Hatası', 'Sunucuya ulaşılamadı.', 'critical');
     }
 }
 
@@ -1820,13 +2004,35 @@ async function fetchRadar() {
     }
 }
 
-function setupLiveStream() {
+function setLiveStreamStatus(status, label) {
     const statusEl = document.getElementById('live-stream-badge');
+    const dotEl = document.getElementById('live-stream-dot');
+    if (statusEl) {
+        statusEl.innerText = label;
+        statusEl.className = status === 'connected'
+            ? 'text-emerald-400 text-xs font-bold'
+            : status === 'reconnecting'
+            ? 'text-amber-300 text-xs font-bold'
+            : 'text-rose-400 text-xs font-bold';
+    }
+    if (dotEl) {
+        dotEl.className = status === 'connected'
+            ? 'w-2 h-2 rounded-full bg-emerald-400 animate-ping'
+            : status === 'reconnecting'
+            ? 'w-2 h-2 rounded-full bg-amber-400 animate-pulse'
+            : 'w-2 h-2 rounded-full bg-rose-500';
+    }
+}
 
+function setupLiveStream() {
     connection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/control-tower')
         .withAutomaticReconnect([0, 2000, 5000, 10000])
         .build();
+
+    connection.on('ConnectedConfirmation', () => {
+        setLiveStreamStatus('connected', 'Canlı Veri Akışı Aktif');
+    });
 
     connection.on('ReceiveStateUpdate', (state) => {
         updateUI(state);
@@ -1834,13 +2040,51 @@ function setupLiveStream() {
         fetchWorkforceOverview();
     });
 
+    connection.on('ReceiveTelemetryAlert', (alert) => {
+        if (!alert) return;
+        const tone = alert.severity === 'Critical' ? 'critical' : 'warning';
+        playAlertTone(tone);
+        showToast(alert.title || 'Yeni Operasyon Uyarısı', alert.description || '', tone);
+    });
+
+    connection.on('ReceiveActionApproved', (payload) => {
+        if (!payload?.message) return;
+        playAlertTone('success');
+        showToast('Operasyon Kararı Onaylandı', payload.message, 'success');
+    });
+
+    connection.onreconnecting(() => {
+        setLiveStreamStatus('reconnecting', 'Yeniden Bağlanıyor...');
+    });
+
+    connection.onreconnected(() => {
+        setLiveStreamStatus('connected', 'Canlı Veri Akışı Aktif');
+        fetchState();
+        fetchRadar();
+        fetchWorkforceOverview();
+    });
+
+    connection.onclose(() => {
+        setLiveStreamStatus('disconnected', 'Bağlantı Kesildi');
+        setTimeout(() => {
+            if (connection && window.signalR && connection.state === signalR.HubConnectionState.Disconnected) {
+                connection.start()
+                    .then(() => {
+                        setLiveStreamStatus('connected', 'Canlı Veri Akışı Aktif');
+                        fetchState();
+                        fetchRadar();
+                        fetchWorkforceOverview();
+                    })
+                    .catch(err => console.error('Live reconnect error:', err));
+            }
+        }, 5000);
+    });
+
     connection.start().then(() => {
-        if (statusEl) {
-            statusEl.innerText = "Canlı Veri Akışı Aktif";
-            statusEl.className = "text-emerald-400 text-xs font-bold";
-        }
+        setLiveStreamStatus('connected', 'Canlı Veri Akışı Aktif');
     }).catch(err => {
-        console.error("Live connection error:", err);
+        console.error('Live connection error:', err);
+        setLiveStreamStatus('disconnected', 'Canlı Bağlantı Beklemede');
     });
 }
 
@@ -1861,4 +2105,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     updateClock();
     setInterval(updateClock, 1000);
+
+    // Escape key closes any active modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeVehicleDetailModal();
+            closeDispatchModal();
+            closeSmartWorkforceMatcherModal();
+        }
+    });
 });
