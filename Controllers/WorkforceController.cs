@@ -90,7 +90,8 @@ public class WorkforceController : ControllerBase
 
         int duration = Math.Max(1, request.DurationDays);
 
-        var candidates = await _dbContext.Workers
+        int neededCount = Math.Max(1, request.DeficitCount);
+        var eligiblePool = await _dbContext.Workers
             .Include(w => w.CurrentPlant)
             .Include(w => w.HomePlant)
             .Where(w => w.CurrentPlantId != targetPlant.Id)
@@ -101,8 +102,24 @@ public class WorkforceController : ControllerBase
                         w.RoleOrSkill.Contains(request.RequiredRoleOrSkill))
             .OrderBy(w => w.MobilityAllowanceRate)
             .ThenByDescending(w => w.SkillScore)
-            .Take(Math.Max(1, request.DeficitCount))
             .ToListAsync();
+
+        var candidates = new List<Worker>();
+        var remainingSurplusByPlant = new Dictionary<int, int>();
+        foreach (var worker in eligiblePool)
+        {
+            if (candidates.Count >= neededCount) break;
+            if (worker.CurrentPlant == null) continue;
+
+            if (!remainingSurplusByPlant.TryGetValue(worker.CurrentPlantId, out int surplus))
+            {
+                surplus = worker.CurrentPlant.CurrentWorkerCount - worker.CurrentPlant.RequiredWorkerCount;
+            }
+            if (surplus <= 0) continue;
+
+            remainingSurplusByPlant[worker.CurrentPlantId] = surplus - 1;
+            candidates.Add(worker);
+        }
 
         var rankedResults = candidates.Select(w =>
         {
@@ -154,6 +171,14 @@ public class WorkforceController : ControllerBase
             });
         }
 
+        if (worker.Status != "Active")
+        {
+            return BadRequest(new
+            {
+                error = $"{worker.FullName} şu anda aktif görevlendirilebilir durumda değil (Durum: {worker.Status})."
+            });
+        }
+
         var fromPlant = await ResolvePlantAsync(worker.CurrentPlantId);
         var toPlant = await ResolvePlantAsync(dto.ToPlantId);
         if (fromPlant == null || toPlant == null)
@@ -164,9 +189,26 @@ public class WorkforceController : ControllerBase
             return BadRequest(new { error = "Personel zaten seçilen hedef fabrikada görev yapmaktadır." });
         }
 
+        if (fromPlant.CurrentWorkerCount <= fromPlant.RequiredWorkerCount)
+        {
+            return BadRequest(new
+            {
+                error = $"Kadro Kısıtı: {fromPlant.Name} tesisinde fazladan personel bulunmadığı için ({fromPlant.CurrentWorkerCount}/{fromPlant.RequiredWorkerCount}) görevlendirme yapılamaz."
+            });
+        }
+
         int days = Math.Max(1, dto.DurationDays);
         decimal cost = (worker.MobilityAllowanceRate * days) + 200m;
         decimal preventedPenalty = 15_000m;
+
+        // Cancel any pending Proposed orders for this worker so they cannot be double-approved later
+        var pendingProposedOrders = await _dbContext.WorkerTransferOrders
+            .Where(o => o.WorkerId == worker.Id && o.Status == "Proposed")
+            .ToListAsync();
+        foreach (var pending in pendingProposedOrders)
+        {
+            pending.Status = "Cancelled";
+        }
 
         var order = new WorkerTransferOrder
         {
@@ -188,19 +230,32 @@ public class WorkforceController : ControllerBase
         worker.CurrentPlantId = toPlant.Id;
 
         fromPlant.CurrentWorkerCount = Math.Max(0, fromPlant.CurrentWorkerCount - 1);
+        fromPlant.ActiveCapacityPercent = Math.Round(Math.Min(115.0, fromPlant.ActiveCapacityPercent + 5.5), 1);
         toPlant.CurrentWorkerCount++;
-        toPlant.Status = "Normal";
-        toPlant.ActiveCapacityPercent = Math.Max(88.0, toPlant.ActiveCapacityPercent - 6.0);
+        toPlant.ActiveCapacityPercent = Math.Round(Math.Max(60.0, toPlant.ActiveCapacityPercent - 6.5), 1);
+
+        var openSeverities = await _dbContext.ExternalTelemetryAlerts
+            .Where(a => !a.IsResolved && a.TargetPlantId == toPlant.Id)
+            .Select(a => a.Severity)
+            .ToListAsync();
+        toPlant.Status = openSeverities.Any(s => string.Equals(s, "Critical", StringComparison.OrdinalIgnoreCase))
+            ? "Critical"
+            : (openSeverities.Count > 0 ? "Warning" : "Normal");
 
         _dbContext.WorkerTransferOrders.Add(order);
 
         var kpi = await _dbContext.OperationalKpis.FirstOrDefaultAsync();
         if (kpi != null)
         {
+            var allPlants = await _dbContext.Plants.ToListAsync();
+            if (allPlants.Count > 0)
+            {
+                kpi.MultiPlantWorkloadVariance = Math.Round(
+                    allPlants.Max(p => p.ActiveCapacityPercent) - allPlants.Min(p => p.ActiveCapacityPercent), 1);
+            }
             kpi.MobileWorkersDeployed++;
             kpi.TotalAvoidedPenaltyEur += preventedPenalty;
             kpi.TotalEmergencyLogisticsCostEur += cost;
-            kpi.MultiPlantWorkloadVariance = Math.Max(12.0, kpi.MultiPlantWorkloadVariance - 6.5);
             kpi.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -241,13 +296,19 @@ public class WorkforceController : ControllerBase
         if (order.Status == "Completed")
             return Ok(new { success = true, order });
 
+        if (order.Status != "InTransit")
+            return BadRequest(new { error = "Yalnızca aktif görevde olan personel ana fabrikasına geri döndürülebilir." });
+
         var currentPlant = await _dbContext.Plants.FindAsync(order.Worker.CurrentPlantId);
         var homePlant = await _dbContext.Plants.FindAsync(order.Worker.HomePlantId);
 
         if (currentPlant != null && homePlant != null && currentPlant.Id != homePlant.Id)
         {
             currentPlant.CurrentWorkerCount = Math.Max(0, currentPlant.CurrentWorkerCount - 1);
+            currentPlant.ActiveCapacityPercent = Math.Round(Math.Min(115.0, currentPlant.ActiveCapacityPercent + 6.5), 1);
+
             homePlant.CurrentWorkerCount++;
+            homePlant.ActiveCapacityPercent = Math.Round(Math.Max(60.0, homePlant.ActiveCapacityPercent - 5.5), 1);
         }
 
         order.Status = "Completed";
@@ -258,6 +319,12 @@ public class WorkforceController : ControllerBase
         var kpi = await _dbContext.OperationalKpis.FirstOrDefaultAsync();
         if (kpi != null)
         {
+            var allPlants = await _dbContext.Plants.ToListAsync();
+            if (allPlants.Count > 0)
+            {
+                kpi.MultiPlantWorkloadVariance = Math.Round(
+                    allPlants.Max(p => p.ActiveCapacityPercent) - allPlants.Min(p => p.ActiveCapacityPercent), 1);
+            }
             kpi.MobileWorkersDeployed = Math.Max(0, kpi.MobileWorkersDeployed - 1);
             kpi.UpdatedAt = DateTime.UtcNow;
         }

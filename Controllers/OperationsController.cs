@@ -49,11 +49,15 @@ public class OperationsController : ControllerBase
         if (dto.ActionType == "MaterialTransfer" && dto.OrderId.HasValue)
         {
             var result = await _decisionEngine.ApproveMaterialTransferAsync(dto.OrderId.Value, dto.ApprovedBy);
+            if (result == null)
+                return NotFound(new { error = "Malzeme transfer emri bulunamadı." });
             return Ok(new { success = true, order = result });
         }
         else if (dto.ActionType == "WorkerTransfer" && dto.OrderId.HasValue)
         {
             var result = await _decisionEngine.ApproveWorkerTransferAsync(dto.OrderId.Value, dto.ApprovedBy);
+            if (result == null)
+                return NotFound(new { error = "Personel transfer emri bulunamadı." });
             return Ok(new { success = true, order = result });
         }
 
@@ -101,7 +105,7 @@ public class OperationsController : ControllerBase
         };
 
         var chosen = variants[Random.Shared.Next(variants.Length)];
-        await _channel.WriteAsync(chosen);
+        await _channel.WriteAsync(chosen, HttpContext.RequestAborted);
         return Accepted(new { message = "Deniz lojistik krizi senaryosu başlatıldı.", scenarioTitle = chosen.Description, telemetry = chosen });
     }
 
@@ -146,7 +150,7 @@ public class OperationsController : ControllerBase
         };
 
         var chosen = variants[Random.Shared.Next(variants.Length)];
-        await _channel.WriteAsync(chosen);
+        await _channel.WriteAsync(chosen, HttpContext.RequestAborted);
         return Accepted(new { message = "Hava kargo rötar senaryosu başlatıldı.", scenarioTitle = chosen.Description, telemetry = chosen });
     }
 
@@ -198,7 +202,7 @@ public class OperationsController : ControllerBase
         };
 
         var chosen = variants[Random.Shared.Next(variants.Length)];
-        await _channel.WriteAsync(chosen);
+        await _channel.WriteAsync(chosen, HttpContext.RequestAborted);
         return Accepted(new { message = "Personel darboğazı senaryosu başlatıldı.", scenarioTitle = chosen.Description, telemetry = chosen });
     }
 

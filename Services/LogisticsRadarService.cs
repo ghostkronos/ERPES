@@ -12,9 +12,10 @@ public class LogisticsRadarService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<LogisticsRadarService> _logger;
 
-    private List<AircraftPositionDto> _cachedAircraft = new();
-    private DateTime _lastOpenSkyFetch = DateTime.MinValue;
-    private string _flightSourceStatus = "Canlı Hava Kargo Radarı Aktif";
+    private static readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private static List<AircraftPositionDto> _cachedAircraft = new();
+    private static DateTime _lastOpenSkyFetch = DateTime.MinValue;
+    private static string _flightSourceStatus = "Canlı Hava Kargo Radarı Aktif";
 
     public LogisticsRadarService(
         HttpClient httpClient,
@@ -22,7 +23,6 @@ public class LogisticsRadarService
         ILogger<LogisticsRadarService> logger)
     {
         _httpClient = httpClient;
-        _httpClient.Timeout = TimeSpan.FromSeconds(4);
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -49,32 +49,32 @@ public class LogisticsRadarService
             .Where(w => w.Status == "InTransit")
             .ToListAsync();
 
-        bool hasRotterdamCrisis = activeAlerts.Any(a =>
-            a.SourceType == "MarineLogistics" && (a.TransportCode != null && a.TransportCode.Contains("ROTTERDAM")));
+        var rotterdamAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "MarineLogistics" && (a.TransportCode?.Contains("ROTTERDAM") == true || (a.TargetPlantId == 1 && a.MaterialCode == "CHIP-MCU-AUTO")));
 
-        bool hasCmaCgmCrisis = activeAlerts.Any(a =>
-            a.SourceType == "MarineLogistics" && (a.TransportCode != null && a.TransportCode.Contains("CMA-CGM")));
+        var cmaCgmAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "MarineLogistics" && (a.TransportCode?.Contains("CMA-CGM") == true || (a.TargetPlantId == 1 && a.MaterialCode == "STEEL-COIL-S2")));
 
-        bool hasArkasCrisis = activeAlerts.Any(a =>
-            a.SourceType == "MarineLogistics" && (a.TransportCode != null && a.TransportCode.Contains("ARKAS")));
+        var arkasAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "MarineLogistics" && (a.TransportCode?.Contains("ARKAS") == true || a.TargetPlantId == 2));
 
-        bool hasTkCargoCrisis = activeAlerts.Any(a =>
-            a.SourceType == "AirCargo" && (a.TransportCode != null && a.TransportCode.Contains("TK-CARGO")));
+        var tkCargoAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "AirCargo" && a.TransportCode?.Contains("TK-CARGO") == true);
 
-        bool hasDhlCargoCrisis = activeAlerts.Any(a =>
-            a.SourceType == "AirCargo" && (a.TransportCode != null && a.TransportCode.Contains("DHL")));
+        var dhlCargoAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "AirCargo" && a.TransportCode?.Contains("DHL") == true);
 
-        bool hasMngCargoCrisis = activeAlerts.Any(a =>
-            a.SourceType == "AirCargo" && (a.TransportCode != null && a.TransportCode.Contains("MNG")));
+        var mngCargoAlert = activeAlerts.FirstOrDefault(a =>
+            a.SourceType == "AirCargo" && a.TransportCode?.Contains("MNG") == true);
 
-        var aircraft = await GetAircraftPositionsAsync(hasTkCargoCrisis, hasDhlCargoCrisis, hasMngCargoCrisis);
-        var vessels = GetMaritimeVessels(hasRotterdamCrisis, hasCmaCgmCrisis, hasArkasCrisis);
+        var (aircraft, flightSourceStatus) = await GetAircraftPositionsAsync(tkCargoAlert, dhlCargoAlert, mngCargoAlert);
+        var vessels = GetMaritimeVessels(rotterdamAlert, cmaCgmAlert, arkasAlert);
         var landVehicles = GetLandVehicles(activeMaterialOrders, activeWorkerOrders);
 
         return new LogisticsRadarDto
         {
             Timestamp = DateTime.UtcNow,
-            FlightDataSource = _flightSourceStatus,
+            FlightDataSource = flightSourceStatus,
             MarineDataSource = "Canlı Deniz Lojistik Radarı Aktif",
             Aircraft = aircraft,
             Vessels = vessels,
@@ -82,107 +82,71 @@ public class LogisticsRadarService
         };
     }
 
-    private async Task<List<AircraftPositionDto>> GetAircraftPositionsAsync(
-        bool hasTkCargoCrisis,
-        bool hasDhlCargoCrisis,
-        bool hasMngCargoCrisis)
+    private async Task<(List<AircraftPositionDto> Aircraft, string SourceStatus)> GetAircraftPositionsAsync(
+        ExternalTelemetryAlert? tkCargoAlert,
+        ExternalTelemetryAlert? dhlCargoAlert,
+        ExternalTelemetryAlert? mngCargoAlert)
     {
-        if ((DateTime.UtcNow - _lastOpenSkyFetch).TotalSeconds > 15 || _cachedAircraft.Count == 0)
+        List<AircraftPositionDto> cachedSnapshot;
+        string sourceStatus;
+
+        await _cacheLock.WaitAsync();
+        try
         {
-            try
+            if ((DateTime.UtcNow - _lastOpenSkyFetch).TotalSeconds > 15 || _cachedAircraft.Count == 0)
             {
-                string url = "https://opensky-network.org/api/states/all?lamin=38.0&lomin=26.0&lamax=41.5&lomax=30.8";
-                var response = await _httpClient.GetAsync(url);
-
-                if (response.IsSuccessStatusCode)
+                var liveList = await TryFetchOpenSkyAsync();
+                if (liveList.Count == 0)
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("states", out var statesElement) && statesElement.ValueKind == JsonValueKind.Array)
+                    liveList = await TryFetchAdsbLolAsync();
+                }
+
+                if (liveList.Count > 0)
+                {
+                    _cachedAircraft = liveList;
+                    _lastOpenSkyFetch = DateTime.UtcNow;
+                    _flightSourceStatus = $"Canlı Hava Kargo Radarı ({liveList.Count + 3} Uçak)";
+                }
+                else
+                {
+                    // Avoid hammering rate-limited endpoints on every poll
+                    _lastOpenSkyFetch = DateTime.UtcNow;
+                    if (_cachedAircraft.Count == 0)
                     {
-                        var liveList = new List<AircraftPositionDto>();
-                        int count = 0;
-
-                        foreach (var state in statesElement.EnumerateArray())
-                        {
-                            if (count >= 12) break;
-
-                            string icao = state[0].GetString() ?? "N/A";
-                            string callsign = (state[1].GetString() ?? "").Trim();
-                            string country = state[2].GetString() ?? "Türkiye";
-                            double? lon = state[5].ValueKind == JsonValueKind.Number ? state[5].GetDouble() : null;
-                            double? lat = state[6].ValueKind == JsonValueKind.Number ? state[6].GetDouble() : null;
-                            double alt = state[7].ValueKind == JsonValueKind.Number ? state[7].GetDouble() : 3500;
-                            double velMs = state[9].ValueKind == JsonValueKind.Number ? state[9].GetDouble() : 180;
-                            double heading = state[10].ValueKind == JsonValueKind.Number ? state[10].GetDouble() : 90;
-
-                            if (lat.HasValue && lon.HasValue && !string.IsNullOrWhiteSpace(callsign))
-                            {
-                                string assignedPlantCode = lat.Value < 39.2
-                                    ? "PLANT-C"
-                                    : (lat.Value < 40.45 ? "PLANT-B" : "PLANT-A");
-
-                                string assignedPlantName = assignedPlantCode == "PLANT-C"
-                                    ? "Tesis C — İzmir Sensör & Elektronik"
-                                    : (assignedPlantCode == "PLANT-B"
-                                        ? "Tesis B — Bursa Güç Aktarma & Bileşen"
-                                        : "Tesis A — Kocaeli Otomotiv Montaj");
-
-                                liveList.Add(new AircraftPositionDto
-                                {
-                                    Icao24 = icao,
-                                    Callsign = callsign,
-                                    OriginCountry = country,
-                                    Latitude = lat.Value,
-                                    Longitude = lon.Value,
-                                    AltitudeMeters = Math.Round(alt, 0),
-                                    VelocityKnots = Math.Round(velMs * 1.94384, 0),
-                                    Heading = Math.Round(heading, 0),
-                                    CargoType = "Endüstriyel Yedek Parça & Hava Kargo",
-                                    Route = $"{country} ➔ Marmara / Ege Hava Koridoru",
-                                    OriginAirport = $"{country} Uluslararası Hub",
-                                    DestinationAirport = assignedPlantCode == "PLANT-C" ? "İzmir Adnan Menderes (ADB)" : "Sabiha Gökçen (SAW)",
-                                    TargetPlantCode = assignedPlantCode,
-                                    TargetPlantName = assignedPlantName,
-                                    PilotOrOperator = "Hava Kargo Operasyon Filosu",
-                                    Eta = "Zamanında (Uçuşta)",
-                                    Status = "OnTime",
-                                    IsLiveAdsb = true
-                                });
-                                count++;
-                            }
-                        }
-
-                        if (liveList.Count > 0)
-                        {
-                            _cachedAircraft = liveList;
-                            _lastOpenSkyFetch = DateTime.UtcNow;
-                            _flightSourceStatus = $"Canlı Hava Kargo Radarı ({liveList.Count + 3} Uçak)";
-                        }
+                        _flightSourceStatus = "Hava Kargo Radarı (Simülasyon Modu)";
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Live aviation feed fallback active: {Msg}", ex.Message);
-                _flightSourceStatus = "Canlı Hava Kargo Radarı Aktif";
-            }
+
+            cachedSnapshot = new List<AircraftPositionDto>(_cachedAircraft);
+            sourceStatus = _flightSourceStatus;
         }
+        finally
+        {
+            _cacheLock.Release();
+        }
+
+        bool hasTkCargoCrisis = tkCargoAlert != null;
+        bool hasDhlCargoCrisis = dhlCargoAlert != null;
+        bool hasMngCargoCrisis = mngCargoAlert != null;
+        int tkDelay = tkCargoAlert?.DelayHours > 0 ? tkCargoAlert.DelayHours : 36;
+        int dhlDelay = dhlCargoAlert?.DelayHours > 0 ? dhlCargoAlert.DelayHours : 48;
+        int mngDelay = mngCargoAlert?.DelayHours > 0 ? mngCargoAlert.DelayHours : 42;
 
         var result = new List<AircraftPositionDto>();
         double timeOffset = (DateTime.UtcNow.Second % 60) * 0.0014;
 
-        // 1. Dedicated Cargo Flight for Plant A (Kocaeli)
+        // 1. Dedicated Cargo Flight for Plant A (Kocaeli) — moving NE toward Sabiha Gökçen
         result.Add(new AircraftPositionDto
         {
             Icao24 = "4bb104",
             Callsign = "TK-CARGO-704",
             OriginCountry = "Türkiye",
-            Latitude = 39.2520 - timeOffset,
+            Latitude = 39.2520 + timeOffset,
             Longitude = 27.4840 + timeOffset,
             AltitudeMeters = 6400,
             VelocityKnots = hasTkCargoCrisis ? 310 : 445,
-            Heading = 195,
+            Heading = 42,
             CargoType = "ADAS Ön LiDAR & Radar Sensör Kiti (400 Adet)",
             Route = "Frankfurt (FRA) ➔ Sabiha Gökçen / Kocaeli (Tesis A)",
             OriginAirport = "Frankfurt Kargo Hub (FRA)",
@@ -190,12 +154,12 @@ public class LogisticsRadarService
             TargetPlantCode = "PLANT-A",
             TargetPlantName = "Tesis A — Kocaeli Otomotiv Montaj",
             PilotOrOperator = "Turkish Cargo — Kpt. S. Karahan",
-            Eta = hasTkCargoCrisis ? "+36 Saat Rötarlı (Hava Muhalefeti)" : "Zamanında (1 Saat 20 Dk)",
+            Eta = hasTkCargoCrisis ? $"+{tkDelay} Saat Rötarlı (Hava Muhalefeti)" : "Zamanında (1 Saat 20 Dk)",
             Status = hasTkCargoCrisis ? "Critical" : "OnTime",
             IsLiveAdsb = true
         });
 
-        // 2. Dedicated Cargo Flight for Plant B (Bursa) / Plant C (İzmir)
+        // 2. Dedicated Cargo Flight for Plant B (Bursa) / Plant C (İzmir) — moving SE toward Bursa
         result.Add(new AircraftPositionDto
         {
             Icao24 = "ac3857",
@@ -213,43 +177,193 @@ public class LogisticsRadarService
             TargetPlantCode = "PLANT-B",
             TargetPlantName = "Tesis B — Bursa Güç Aktarma & Bileşen",
             PilotOrOperator = "European Air Transport — Kpt. M. Weber",
-            Eta = hasDhlCargoCrisis ? "+48 Saat Rötarlı (Slot Kısıtı)" : "Zamanında (45 Dk Kaldı)",
+            Eta = hasDhlCargoCrisis ? $"+{dhlDelay} Saat Rötarlı (Slot Kısıtı)" : "Zamanında (45 Dk Kaldı)",
             Status = hasDhlCargoCrisis ? "Critical" : "OnTime",
             IsLiveAdsb = true
         });
 
-        // 3. Dedicated Cargo Flight for Plant C (İzmir)
+        // 3. Dedicated Cargo Flight for Plant A (Kocaeli) via Sabiha Gökçen — aligned with simulation payload
         result.Add(new AircraftPositionDto
         {
             Icao24 = "4ba992",
             Callsign = "MNG-CARGO-308",
             OriginCountry = "Türkiye",
-            Latitude = 38.6800 - timeOffset,
-            Longitude = 26.9200 + timeOffset,
+            Latitude = 40.6800 + timeOffset,
+            Longitude = 28.9200 + timeOffset,
             AltitudeMeters = 3250,
             VelocityKnots = hasMngCargoCrisis ? 280 : 365,
-            Heading = 165,
-            CargoType = "SMD Yarı İletken Wafer & ADAS Sensör Paketleri (600 Adet)",
-            Route = "Amsterdam (AMS) ➔ İzmir Adnan Menderes (Tesis C)",
+            Heading = 58,
+            CargoType = "ADAS Ön LiDAR & Radar Sensör Paketleri (600 Adet)",
+            Route = "Amsterdam (AMS) ➔ Sabiha Gökçen / Kocaeli (Tesis A)",
             OriginAirport = "Amsterdam Schiphol Kargo (AMS)",
-            DestinationAirport = "İzmir Adnan Menderes Kargo (ADB)",
-            TargetPlantCode = "PLANT-C",
-            TargetPlantName = "Tesis C — İzmir Sensör & Elektronik",
+            DestinationAirport = "Sabiha Gökçen Hava Kargo (SAW)",
+            TargetPlantCode = "PLANT-A",
+            TargetPlantName = "Tesis A — Kocaeli Otomotiv Montaj",
             PilotOrOperator = "MNG Hava Kargo — Kpt. E. Aydın",
-            Eta = hasMngCargoCrisis ? "+42 Saat Rötarlı (Teknik Bakım)" : "Zamanında (30 Dk Kaldı)",
+            Eta = hasMngCargoCrisis ? $"+{mngDelay} Saat Rötarlı (Teknik Bakım)" : "Zamanında (30 Dk Kaldı)",
             Status = hasMngCargoCrisis ? "Critical" : "OnTime",
             IsLiveAdsb = true
         });
 
-        result.AddRange(_cachedAircraft);
-        return result;
+        result.AddRange(cachedSnapshot);
+        return (result, sourceStatus);
+    }
+
+    private static AircraftPositionDto CreateLiveAircraftDto(
+        string icao,
+        string callsign,
+        string country,
+        double lat,
+        double lon,
+        double altMeters,
+        double velocityKnots,
+        double heading)
+    {
+        string assignedPlantCode = lat < 39.2
+            ? "PLANT-C"
+            : (lat < 40.45 ? "PLANT-B" : "PLANT-A");
+
+        string assignedPlantName = assignedPlantCode == "PLANT-C"
+            ? "Tesis C — İzmir Sensör & Elektronik"
+            : (assignedPlantCode == "PLANT-B"
+                ? "Tesis B — Bursa Güç Aktarma & Bileşen"
+                : "Tesis A — Kocaeli Otomotiv Montaj");
+
+        return new AircraftPositionDto
+        {
+            Icao24 = icao,
+            Callsign = callsign,
+            OriginCountry = country,
+            Latitude = lat,
+            Longitude = lon,
+            AltitudeMeters = Math.Round(altMeters, 0),
+            VelocityKnots = Math.Round(velocityKnots, 0),
+            Heading = Math.Round(heading, 0),
+            CargoType = "Endüstriyel Yedek Parça & Hava Kargo",
+            Route = $"{country} ➔ Marmara / Ege Hava Koridoru",
+            OriginAirport = $"{country} Uluslararası Hub",
+            DestinationAirport = assignedPlantCode == "PLANT-C" ? "İzmir Adnan Menderes (ADB)" : "Sabiha Gökçen (SAW)",
+            TargetPlantCode = assignedPlantCode,
+            TargetPlantName = assignedPlantName,
+            PilotOrOperator = "Hava Kargo Operasyon Filosu",
+            Eta = "Zamanında (Uçuşta)",
+            Status = "OnTime",
+            IsLiveAdsb = true
+        };
+    }
+
+    private async Task<List<AircraftPositionDto>> TryFetchOpenSkyAsync()
+    {
+        var liveList = new List<AircraftPositionDto>();
+        try
+        {
+            const string url = "https://opensky-network.org/api/states/all?lamin=38.0&lomin=26.0&lamax=41.5&lomax=30.8";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("OpenSky returned HTTP {Status}; falling back to ADSB.lol.", (int)response.StatusCode);
+                return liveList;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("states", out var statesElement) || statesElement.ValueKind != JsonValueKind.Array)
+                return liveList;
+
+            foreach (var state in statesElement.EnumerateArray())
+            {
+                if (liveList.Count >= 12) break;
+
+                string icao = state[0].GetString() ?? "N/A";
+                string callsign = (state[1].GetString() ?? "").Trim();
+                string country = state[2].GetString() ?? "Türkiye";
+                double? lon = state[5].ValueKind == JsonValueKind.Number ? state[5].GetDouble() : null;
+                double? lat = state[6].ValueKind == JsonValueKind.Number ? state[6].GetDouble() : null;
+                double alt = state[7].ValueKind == JsonValueKind.Number ? state[7].GetDouble() : 3500;
+                double velMs = state[9].ValueKind == JsonValueKind.Number ? state[9].GetDouble() : 180;
+                double heading = state[10].ValueKind == JsonValueKind.Number ? state[10].GetDouble() : 90;
+
+                if (lat.HasValue && lon.HasValue && !string.IsNullOrWhiteSpace(callsign))
+                {
+                    liveList.Add(CreateLiveAircraftDto(icao, callsign, country, lat.Value, lon.Value, alt, velMs * 1.94384, heading));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("OpenSky fetch failed ({Msg}); falling back to ADSB.lol.", ex.Message);
+        }
+        return liveList;
+    }
+
+    private async Task<List<AircraftPositionDto>> TryFetchAdsbLolAsync()
+    {
+        var liveList = new List<AircraftPositionDto>();
+        try
+        {
+            const string url = "https://api.adsb.lol/v2/point/39.75/28.25/200";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("ADSB.lol returned HTTP {Status}.", (int)response.StatusCode);
+                return liveList;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("ac", out var acElement) || acElement.ValueKind != JsonValueKind.Array)
+                return liveList;
+
+            foreach (var ac in acElement.EnumerateArray())
+            {
+                if (liveList.Count >= 12) break;
+
+                string icao = ac.TryGetProperty("hex", out var hexEl) ? (hexEl.GetString() ?? "N/A") : "N/A";
+                string callsign = ac.TryGetProperty("flight", out var flEl) ? (flEl.GetString() ?? "").Trim() : "";
+                if (string.IsNullOrWhiteSpace(callsign)) continue;
+
+                if (!ac.TryGetProperty("lat", out var latEl) || latEl.ValueKind != JsonValueKind.Number) continue;
+                if (!ac.TryGetProperty("lon", out var lonEl) || lonEl.ValueKind != JsonValueKind.Number) continue;
+
+                double lat = latEl.GetDouble();
+                double lon = lonEl.GetDouble();
+                if (lat < 38.0 || lat > 41.5 || lon < 26.0 || lon > 30.8) continue;
+
+                double altMeters = 3500;
+                if (ac.TryGetProperty("alt_baro", out var altEl) && altEl.ValueKind == JsonValueKind.Number)
+                {
+                    altMeters = altEl.GetDouble() * 0.3048;
+                }
+
+                double speedKnots = ac.TryGetProperty("gs", out var gsEl) && gsEl.ValueKind == JsonValueKind.Number
+                    ? gsEl.GetDouble()
+                    : 320;
+                double heading = ac.TryGetProperty("track", out var trkEl) && trkEl.ValueKind == JsonValueKind.Number
+                    ? trkEl.GetDouble()
+                    : 90;
+
+                liveList.Add(CreateLiveAircraftDto(icao, callsign, "Türkiye", lat, lon, altMeters, speedKnots, heading));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("ADSB.lol fetch failed: {Msg}", ex.Message);
+        }
+        return liveList;
     }
 
     private List<VesselPositionDto> GetMaritimeVessels(
-        bool hasRotterdamCrisis,
-        bool hasCmaCgmCrisis,
-        bool hasArkasCrisis)
+        ExternalTelemetryAlert? rotterdamAlert,
+        ExternalTelemetryAlert? cmaCgmAlert,
+        ExternalTelemetryAlert? arkasAlert)
     {
+        bool hasRotterdamCrisis = rotterdamAlert != null;
+        bool hasCmaCgmCrisis = cmaCgmAlert != null;
+        bool hasArkasCrisis = arkasAlert != null;
+        int rotterdamDelay = rotterdamAlert?.DelayHours > 0 ? rotterdamAlert.DelayHours : 144;
+        int cmaDelay = cmaCgmAlert?.DelayHours > 0 ? cmaCgmAlert.DelayHours : 96;
+        int arkasDelay = arkasAlert?.DelayHours > 0 ? arkasAlert.DelayHours : 72;
+
         double drift = (DateTime.UtcNow.Second % 60) * 0.0008;
 
         return new List<VesselPositionDto>
@@ -269,16 +383,16 @@ public class LogisticsRadarService
                 TargetPlantName = "Tesis A — Kocaeli Otomotiv Montaj",
                 CaptainOrAgency = "MSC Deniz Acentesi — Kpt. H. Van Der Berg",
                 CargoManifest = "1.200 Adet CHIP-MCU-AUTO (32-Bit Otomotiv Mikroçip)",
-                Eta = hasRotterdamCrisis ? "+144 Saat Gecikmeli (Liman Grevi)" : "Zamanında (6 Saat Kaldı)",
+                Eta = hasRotterdamCrisis ? $"+{rotterdamDelay} Saat Gecikmeli (Liman Grevi)" : "Zamanında (6 Saat Kaldı)",
                 Status = hasRotterdamCrisis ? "StrikeAlert" : "Normal",
-                DelayHours = hasRotterdamCrisis ? 144 : 0
+                DelayHours = hasRotterdamCrisis ? rotterdamDelay : 0
             },
             new VesselPositionDto
             {
                 Mmsi = "228339100",
                 VesselName = "CMA CGM BOSPHORUS",
                 Flag = "Fransa",
-                Latitude = 40.7200 - (hasCmaCgmCrisis ? 0 : drift),
+                Latitude = 40.7200 + (hasCmaCgmCrisis ? 0 : drift * 0.25),
                 Longitude = 29.1800 + (hasCmaCgmCrisis ? 0 : drift),
                 SpeedKnots = hasCmaCgmCrisis ? 0.0 : 15.1,
                 Course = 85,
@@ -288,16 +402,16 @@ public class LogisticsRadarService
                 TargetPlantName = "Tesis A — Kocaeli Otomotiv Montaj",
                 CaptainOrAgency = "CMA CGM Türkiye — Kpt. L. Moreau",
                 CargoManifest = "2.400 Kg Yüksek Dayanımlı Rulo Sac (STEEL-COIL-S2)",
-                Eta = hasCmaCgmCrisis ? "+96 Saat Gecikmeli (Boğaz Yoğunluğu)" : "Zamanında (3 Saat Kaldı)",
+                Eta = hasCmaCgmCrisis ? $"+{cmaDelay} Saat Gecikmeli (Boğaz Yoğunluğu)" : "Zamanında (3 Saat Kaldı)",
                 Status = hasCmaCgmCrisis ? "StrikeAlert" : "Normal",
-                DelayHours = hasCmaCgmCrisis ? 96 : 0
+                DelayHours = hasCmaCgmCrisis ? cmaDelay : 0
             },
             new VesselPositionDto
             {
                 Mmsi = "271044210",
                 VesselName = "ARKAS MARMARA EXPRESS",
                 Flag = "Türkiye",
-                Latitude = 40.4350 + (hasArkasCrisis ? 0 : drift),
+                Latitude = 40.4350 - (hasArkasCrisis ? 0 : drift * 0.35),
                 Longitude = 28.9250 + (hasArkasCrisis ? 0 : drift),
                 SpeedKnots = hasArkasCrisis ? 0.0 : 14.2,
                 Course = 112,
@@ -306,18 +420,18 @@ public class LogisticsRadarService
                 TargetPlantCode = "PLANT-B",
                 TargetPlantName = "Tesis B — Bursa Güç Aktarma & Bileşen",
                 CaptainOrAgency = "Arkas Denizcilik — Kpt. T. Çelik",
-                CargoManifest = "320 Adet Elektrikli Araç Şanzıman Modülü (GEAR-BOX-EV)",
-                Eta = hasArkasCrisis ? "+72 Saat Gecikmeli (Gümrük / Fırtına)" : "Zamanında (2 Saat Kaldı)",
+                CargoManifest = "1.000 Adet 32-Bit Otomotiv Mikroçip (CHIP-MCU-AUTO)",
+                Eta = hasArkasCrisis ? $"+{arkasDelay} Saat Gecikmeli (Gümrük / Fırtına)" : "Zamanında (2 Saat Kaldı)",
                 Status = hasArkasCrisis ? "StrikeAlert" : "Normal",
-                DelayHours = hasArkasCrisis ? 72 : 0
+                DelayHours = hasArkasCrisis ? arkasDelay : 0
             },
             new VesselPositionDto
             {
                 Mmsi = "219018442",
                 VesselName = "MAERSK AEGEAN STAR",
                 Flag = "Danimarka",
-                Latitude = 38.4420 + drift,
-                Longitude = 26.8500 - drift,
+                Latitude = 38.4420 - drift * 0.35,
+                Longitude = 26.8500 + drift,
                 SpeedKnots = 17.8,
                 Course = 110,
                 OriginPort = "Valencia Limanı (ES)",
@@ -403,30 +517,38 @@ public class LogisticsRadarService
         // Add any active emergency MaterialTransferOrders dynamically to the Land Fleet
         foreach (var order in activeMaterialOrders)
         {
-            string fromCode = order.FromPlant?.Code ?? (order.FromPlantId == 3 ? "PLANT-C" : "PLANT-B");
-            string toCode = order.ToPlant?.Code ?? "PLANT-A";
-            bool isIzmir = fromCode == "PLANT-C" || order.FromPlantId == 3;
+            string fromCode = order.FromPlant?.Code ?? (order.FromPlantId == 3 ? "PLANT-C" : (order.FromPlantId == 2 ? "PLANT-B" : "PLANT-A"));
+            string toCode = order.ToPlant?.Code ?? (order.ToPlantId == 3 ? "PLANT-C" : (order.ToPlantId == 2 ? "PLANT-B" : "PLANT-A"));
+            bool isIzmir = fromCode == "PLANT-C" || toCode == "PLANT-C" || order.FromPlantId == 3 || order.ToPlantId == 3;
+            bool isProposed = order.Status != "InTransit";
+
+            double lat = isProposed
+                ? (order.FromPlant?.Latitude ?? (fromCode == "PLANT-C" ? 38.5020 : (fromCode == "PLANT-B" ? 40.2110 : 40.8028)))
+                : (isIzmir ? 39.6484 : 40.5200);
+            double lon = isProposed
+                ? (order.FromPlant?.Longitude ?? (fromCode == "PLANT-C" ? 27.0250 : (fromCode == "PLANT-B" ? 28.9320 : 29.4307)))
+                : (isIzmir ? 27.8826 : 29.2800);
 
             list.Insert(0, new LandVehiclePositionDto
             {
                 VehicleCode = $"ACİL-SEVKIYAT-{order.Id}",
-                PlateNumber = isIzmir ? "35 ACIL 704" : "16 ACIL 991",
+                PlateNumber = fromCode == "PLANT-C" ? "35 ACIL 704" : (fromCode == "PLANT-B" ? "16 ACIL 991" : "41 ACIL 101"),
                 VehicleType = isIzmir ? "Ekspres Sensör Panelvanı" : "Acil Müdahale Ekspres Tırı",
                 DriverName = isIzmir ? "Cemil Soylu (Ekspres Ekip)" : "Kadir Özkan (Acil Lojistik)",
                 DriverPhone = isIzmir ? "+90 532 704 35 41" : "+90 532 991 16 41",
-                OriginLocation = order.FromPlant?.Name ?? (isIzmir ? "Tesis C — İzmir" : "Tesis B — Bursa"),
+                OriginLocation = order.FromPlant?.Name ?? (fromCode == "PLANT-C" ? "Tesis C — İzmir" : "Tesis B — Bursa"),
                 DestinationLocation = order.ToPlant?.Name ?? "Tesis A — Kocaeli",
                 SourcePlantCode = fromCode,
                 TargetPlantCode = toCode,
                 CargoDescription = $"{order.MaterialName} ({order.MaterialCode})",
                 QuantityText = $"{order.Quantity} {order.Unit}",
-                Latitude = isIzmir ? 39.6484 : 40.5200,
-                Longitude = isIzmir ? 27.8826 : 29.2800,
-                SpeedKmh = order.Status == "InTransit" ? 96 : 0,
-                Eta = order.Status == "InTransit"
-                    ? (isIzmir ? "Yolda — O-5 Otoyolu (3s 15dk)" : "Yolda — Osmangazi Köprüsü (55 dk)")
-                    : "Kule Onayı Bekliyor",
-                Status = order.Status == "InTransit" ? "EmergencyActive" : "Proposed"
+                Latitude = lat,
+                Longitude = lon,
+                SpeedKmh = isProposed ? 0 : 96,
+                Eta = isProposed
+                    ? "Onay Bekliyor"
+                    : (isIzmir ? "Yolda — O-5 Otoyolu (3s 15dk)" : "Yolda — Osmangazi Köprüsü (55 dk)"),
+                Status = isProposed ? "Proposed" : "EmergencyActive"
             });
         }
 

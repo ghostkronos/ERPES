@@ -75,5 +75,47 @@ public class ApplicationDbContext : DbContext
             .WithMany()
             .HasForeignKey(a => a.TargetPlantId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Mirror unique constraints from supabase_migration.sql
+        modelBuilder.Entity<Plant>()
+            .HasIndex(p => p.Code)
+            .IsUnique();
+
+        modelBuilder.Entity<Worker>()
+            .HasIndex(w => w.EmployeeCode)
+            .IsUnique();
+
+        // SQLite cannot translate ORDER BY on decimal columns unless converted to double
+        if (Database.IsSqlite())
+        {
+            modelBuilder.Entity<Worker>()
+                .Property(w => w.MobilityAllowanceRate)
+                .HasConversion<double>();
+
+            modelBuilder.Entity<WorkerTransferOrder>()
+                .Property(o => o.EstimatedCost)
+                .HasConversion<double>();
+            modelBuilder.Entity<WorkerTransferOrder>()
+                .Property(o => o.PreventedPenaltyAmount)
+                .HasConversion<double>();
+
+            modelBuilder.Entity<MaterialTransferOrder>()
+                .Property(o => o.EstimatedCost)
+                .HasConversion<double>();
+            modelBuilder.Entity<MaterialTransferOrder>()
+                .Property(o => o.PreventedPenaltyAmount)
+                .HasConversion<double>();
+
+            modelBuilder.Entity<ExternalTelemetryAlert>()
+                .Property(a => a.RiskPenaltyAmount)
+                .HasConversion<double>();
+
+            modelBuilder.Entity<OperationalKpi>()
+                .Property(k => k.TotalAvoidedPenaltyEur)
+                .HasConversion<double>();
+            modelBuilder.Entity<OperationalKpi>()
+                .Property(k => k.TotalEmergencyLogisticsCostEur)
+                .HasConversion<double>();
+        }
     }
 }

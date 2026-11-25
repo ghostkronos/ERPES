@@ -4,357 +4,317 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ERPES Operasyon Kulesi — Kurumsal Kaynak, Filo ve Tedarik Zinciri Yönetim Merkezi</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome 6 CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Custom Enterprise Styling -->
-    <link rel="stylesheet" href="/css/style.css?v=7">
+    <link rel="stylesheet" href="/css/style.css?v=10">
 </head>
-<body class="min-h-screen bg-grid-pattern text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
+<body class="min-h-screen bg-grid-pattern text-zinc-100 antialiased selection:bg-sky-500 selection:text-zinc-950">
 
     <!-- Toast Notification Stack -->
-    <div id="toast-container" class="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2.5"></div>
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2"></div>
 
-    <!-- Top Enterprise Command Header -->
-    <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-[#060a14]/95 backdrop-blur-xl px-6 py-3">
-        <div class="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-4">
+    <!-- Single-Row Executive Command Bar -->
+    <header class="sticky top-0 z-50 border-b border-white/[0.08] bg-[#09090b]/90 backdrop-blur-xl">
+        <div class="max-w-[1800px] mx-auto px-5 h-14 flex items-center justify-between gap-3">
 
-            <!-- Brand Identity -->
-            <div class="flex items-center gap-3.5">
-                <div class="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-cyan-500/25 border border-cyan-400/30">
-                    <i class="fa-solid fa-tower-observation text-white text-lg"></i>
-                    <span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#060a14]"></span>
+            <!-- Left: Brand Identity -->
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-white/[0.12] flex items-center justify-center text-sky-400 shadow-inner">
+                    <i class="fa-solid fa-tower-observation text-sm"></i>
                 </div>
-                <div>
-                    <div class="flex items-center gap-2.5">
-                        <h1 class="font-extrabold text-base tracking-wider bg-gradient-to-r from-white via-cyan-200 to-cyan-400 bg-clip-text text-transparent">
-                            ERPES OPERASYON KULESİ
-                        </h1>
-                        <span class="text-[10px] font-bold px-2.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                            KAYNAK & LOJİSTİK YÖNETİM MERKEZİ
-                        </span>
-                    </div>
-                    <p class="text-[11px] text-slate-400 font-medium">
-                        Çoklu Fabrika Üretim Dengeleme, Kara-Hava-Deniz Filo Takibi ve Dinamik İş Gücü Koordinasyonu
-                    </p>
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-sm tracking-tight text-white">ERPES</span>
+                    <span class="text-zinc-600 hidden sm:inline">/</span>
+                    <span class="text-xs font-medium text-zinc-400 hidden sm:inline">Operasyon Kulesi</span>
                 </div>
             </div>
 
-            <!-- Crisis & Disruption Scenario Triggers -->
-            <div class="flex flex-wrap items-center gap-1.5 bg-slate-950/90 p-1.5 rounded-2xl border border-slate-800/90">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 flex items-center gap-1">
-                    <i class="fa-solid fa-bolt text-cyan-400"></i> Operasyonel Senaryolar:
-                </span>
-
+            <!-- Center: Compact Segmented Scenario Bar -->
+            <div class="hidden lg:flex items-center gap-1 bg-zinc-900/90 p-1 rounded-lg border border-white/[0.08]">
                 <button onclick="triggerRotterdamSimulation()"
-                        class="px-3 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer">
-                    <i class="fa-solid fa-ship text-rose-400"></i> Deniz Krizi (Çeşitli)
+                        class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Deniz Krizi
                 </button>
-
                 <button onclick="triggerAirCargoSimulation()"
-                        class="px-3 py-1.5 rounded-xl bg-blue-950/80 hover:bg-blue-900 border border-blue-500/50 text-blue-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer">
-                    <i class="fa-solid fa-plane-departure text-blue-400"></i> Hava Kargo Krizi (Çeşitli)
+                        class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer">
+                    <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span> Hava Kargo
                 </button>
-
                 <button onclick="triggerWorkforceSimulation()"
-                        class="px-3 py-1.5 rounded-xl bg-amber-950/80 hover:bg-amber-900 border border-amber-500/50 text-amber-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer">
-                    <i class="fa-solid fa-users-gear text-amber-400"></i> Personel Darboğazı (Çeşitli)
+                        class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Personel
                 </button>
-
+                <div class="w-px h-4 bg-white/[0.08] mx-0.5"></div>
                 <button onclick="triggerRandomCrisisSimulation()"
-                        class="px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-purple-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                        title="Farklı fabrikalarda ve lojistik hatlarında rastgele bir kriz senaryosu başlatır">
-                    <i class="fa-solid fa-dice text-purple-400"></i> Rastgele Kriz Başlat
+                        class="px-2.5 py-1 rounded-md text-[11px] font-semibold text-zinc-200 hover:text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Rastgele bir operasyonel kriz senaryosu başlatır">
+                    <i class="fa-solid fa-bolt text-violet-400 text-[10px]"></i> Rastgele Kriz
                 </button>
-
                 <button onclick="triggerResetSystem()"
-                        class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
-                        title="Tüm Fabrikaları, Filoyu ve Stokları Başlangıç Durumuna Döndür">
-                    <i class="fa-solid fa-rotate-left text-cyan-400"></i> Operasyonu Sıfırla
+                        class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title="Tüm fabrikaları ve kadroları başlangıç durumuna döndür">
+                    <i class="fa-solid fa-rotate-left text-[10px]"></i> Sıfırla
                 </button>
             </div>
 
-            <!-- Live Status & Clock -->
-            <div class="flex items-center gap-3">
-                <div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span id="live-stream-badge" class="text-xs text-emerald-400 font-bold">Canlı Veri Akışı Aktif</span>
+            <!-- Right: Live Status, Crisis Pill & Clock -->
+            <div class="flex items-center gap-2.5 shrink-0">
+                <div class="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900/90 border border-white/[0.08]">
+                    <span id="live-stream-dot" class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    <span id="live-stream-badge" class="text-[11px] text-amber-300 font-medium">Bağlanıyor...</span>
                 </div>
 
-                <div id="crisis-counter" class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-950/80 border border-emerald-500/60 text-emerald-300">
+                <div id="crisis-counter" class="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
                     OPERASYON STABİL
                 </div>
 
-                <div class="text-right pl-3 border-l border-slate-800 font-mono">
-                    <div id="live-clock" class="text-xs font-bold text-white">--:--:--</div>
-                    <div class="text-[10px] text-slate-500">TRT (UTC+3)</div>
+                <div class="hidden sm:flex items-center gap-1.5 pl-2.5 border-l border-white/[0.08] font-mono tabular-nums">
+                    <span id="live-clock" class="text-xs font-medium text-zinc-200">--:--:--</span>
+                    <span class="text-[10px] text-zinc-500">TRT</span>
                 </div>
             </div>
-
         </div>
     </header>
 
     <!-- Main Container -->
-    <main class="max-w-[1920px] mx-auto p-6 space-y-6">
+    <main class="max-w-[1800px] mx-auto px-5 py-5 space-y-5">
 
-        <!-- Executive KPI Ribbon -->
-        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden">
-                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold mb-1">
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-bullseye text-cyan-400"></i> ZAMANINDA TESLİMAT ORANI (OTIF)</span>
-                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Hedef: %95</span>
+        <!-- Mobile Scenario Bar (only < lg) -->
+        <div class="flex lg:hidden flex-wrap items-center gap-1.5 bg-[#111114] p-2 rounded-xl border border-white/[0.08]">
+            <button onclick="triggerRotterdamSimulation()" class="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/[0.08] text-zinc-200 text-[11px] font-medium cursor-pointer">Deniz Krizi</button>
+            <button onclick="triggerAirCargoSimulation()" class="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/[0.08] text-zinc-200 text-[11px] font-medium cursor-pointer">Hava Kargo</button>
+            <button onclick="triggerWorkforceSimulation()" class="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/[0.08] text-zinc-200 text-[11px] font-medium cursor-pointer">Personel</button>
+            <button onclick="triggerRandomCrisisSimulation()" class="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/[0.08] text-zinc-200 text-[11px] font-semibold cursor-pointer">Rastgele Kriz</button>
+            <button onclick="triggerResetSystem()" class="px-2.5 py-1 rounded-md bg-zinc-900 border border-white/[0.08] text-zinc-400 text-[11px] font-medium cursor-pointer ml-auto">Sıfırla</button>
+        </div>
+
+        <!-- Executive KPI Strip -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div class="surface-card rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">OTIF Teslimat Oranı</span>
+                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-white/[0.08] whitespace-nowrap">Hedef %95</span>
                 </div>
-                <div id="kpi-otif" class="text-3xl font-extrabold font-mono text-cyan-400 tracking-tight">%98.4</div>
-                <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Müşteri Sipariş Karşılama Performansı</span>
-                    <span class="text-emerald-400 font-semibold"><i class="fa-solid fa-arrow-trend-up"></i> Optimal</span>
+                <div id="kpi-otif" class="text-2xl font-bold font-mono tabular-nums text-white tracking-tight">%98.4</div>
+                <div class="mt-2 pt-2 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
+                    <span class="text-zinc-500 truncate">Müşteri Sipariş Performansı</span>
+                    <span id="kpi-otif-status" class="text-emerald-400 font-medium whitespace-nowrap"><i class="fa-solid fa-arrow-trend-up mr-1"></i>Optimal</span>
                 </div>
             </div>
 
-            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden">
-                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold mb-1">
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-hourglass-half text-amber-400"></i> KRİTİK STOK YETME SÜRESİ</span>
-                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">Alt Eşik: 3.0 Gün</span>
+            <div class="surface-card rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Kritik Stok Yetme Süresi</span>
+                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-zinc-900 text-amber-400/90 border border-amber-500/20 whitespace-nowrap">Eşik 3.0 Gün</span>
                 </div>
-                <div id="kpi-tts" class="text-3xl font-extrabold font-mono text-amber-400 tracking-tight">2.0 Gün</div>
-                <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Tesis A Otomotiv Çip Emniyet Tamponu</span>
-                    <span class="text-amber-300 font-mono">Tüketim: 200 Adet/Gün</span>
-                </div>
-            </div>
-
-            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden">
-                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold mb-1">
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-scale-unbalanced text-blue-400"></i> FABRİKALAR ARASI İŞ YÜKÜ FARKI</span>
-                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">3 Üretim Tesisi</span>
-                </div>
-                <div id="kpi-variance" class="text-3xl font-extrabold font-mono text-blue-400 tracking-tight">%44.5</div>
-                <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Kocaeli (%108.5) — Bursa (%64.0) — İzmir (%78.0)</span>
-                    <span class="text-cyan-400 font-semibold">Kadro Dengeleme Aktif</span>
+                <div id="kpi-tts" class="text-2xl font-bold font-mono tabular-nums text-amber-400 tracking-tight">2.0 Gün</div>
+                <div class="mt-2 pt-2 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
+                    <span id="kpi-tts-material" class="text-zinc-500 truncate">Tesis A — Otomotiv Çip</span>
+                    <span id="kpi-tts-consumption" class="text-zinc-300 font-mono whitespace-nowrap">200 Adet/Gün</span>
                 </div>
             </div>
 
-            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden border border-emerald-500/30">
-                <div class="flex items-center justify-between text-xs text-slate-400 font-semibold mb-1">
-                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-sack-dollar text-emerald-400"></i> ÖNLENEN GECİKME CEZASI (NET KAZANIM)</span>
-                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">Maliyet Koruma</span>
+            <div class="surface-card rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Tesis İş Yükü Farkı</span>
+                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-white/[0.08] whitespace-nowrap">3 Fabrika</span>
                 </div>
-                <div id="kpi-savings" class="text-3xl font-extrabold font-mono text-emerald-400 tracking-tight">€0</div>
-                <div id="kpi-cost" class="mt-2 text-[11px] font-mono text-slate-400">
-                    Acil Sevkiyat ve Görevlendirme Maliyeti: €0
+                <div id="kpi-variance" class="text-2xl font-bold font-mono tabular-nums text-sky-400 tracking-tight">%44.5</div>
+                <div class="mt-2 pt-2 border-t border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
+                    <span id="kpi-variance-breakdown" class="text-zinc-500 truncate">Kocaeli (%108.5) — Bursa (%64.0) — İzmir (%76.0)</span>
+                </div>
+            </div>
+
+            <div class="surface-card rounded-xl p-4">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Önlenen Gecikme Cezası</span>
+                    <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">Net Kazanç</span>
+                </div>
+                <div id="kpi-savings" class="text-2xl font-bold font-mono tabular-nums text-emerald-400 tracking-tight">€0</div>
+                <div id="kpi-cost" class="mt-2 pt-2 border-t border-white/[0.06] text-[11px] font-mono text-zinc-500 truncate">
+                    Acil Sevkiyat Maliyeti: €0
                 </div>
             </div>
         </section>
 
-        <!-- TOP OPERATIONAL GRID: Map + Decision & Alert Center -->
-        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Hero Split Workspace: Map (8 cols) + Decision & Alerts (4 cols) -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-            <!-- Left 7 Columns: Geo-Radar Map -->
-            <div class="lg:col-span-7">
-                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-800 h-full flex flex-col">
-                    <div class="p-3.5 border-b border-slate-800 bg-slate-950/70 flex flex-wrap items-center justify-between gap-3">
+            <!-- Left 8 Columns: Geo-Radar Map with Floating Filter Bar -->
+            <div class="lg:col-span-8">
+                <div class="surface-card rounded-xl overflow-hidden flex flex-col">
+                    <div class="px-4 py-3 border-b border-white/[0.08] flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-2.5">
-                            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-                            <h3 class="font-bold text-sm text-white">Canlı Fabrika, Lojistik Filo ve Sevkiyat Haritası</h3>
-                            <span id="radar-source-badge" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-slate-700">
-                                Canlı Filo Takibi Aktif
+                            <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+                            <h2 class="font-semibold text-sm text-white">Canlı Fabrika ve Filo Haritası</h2>
+                            <span id="radar-source-badge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-white/[0.08]">
+                                Canlı Filo Takibi
                             </span>
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-1.5">
+                        <div class="flex flex-wrap items-center gap-1 bg-zinc-900/90 p-1 rounded-lg border border-white/[0.08]">
                             <button id="filter-btn-all" onclick="setMapFilter('all')"
-                                    class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 transition-all cursor-pointer">
-                                Tüm Filo & Tesisler
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-zinc-800 text-white transition-colors cursor-pointer">
+                                Tümü
                             </button>
                             <button id="filter-btn-plants" onclick="setMapFilter('plants')"
-                                    class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200 transition-all cursor-pointer">
-                                <i class="fa-solid fa-industry text-cyan-400 mr-1"></i>Fabrikalar (3)
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
+                                Tesisler (3)
                             </button>
                             <button id="filter-btn-land" onclick="setMapFilter('land')"
-                                    class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200 transition-all cursor-pointer">
-                                <i class="fa-solid fa-truck-fast text-emerald-400 mr-1"></i>Kara (<span id="live-land-count">3</span>)
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
+                                Kara (<span id="live-land-count">3</span>)
                             </button>
                             <button id="filter-btn-vessels" onclick="setMapFilter('vessels')"
-                                    class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200 transition-all cursor-pointer">
-                                <i class="fa-solid fa-ship text-blue-400 mr-1"></i>Deniz (<span id="live-vessel-count">4</span>)
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
+                                Deniz (<span id="live-vessel-count">4</span>)
                             </button>
                             <button id="filter-btn-aircraft" onclick="setMapFilter('aircraft')"
-                                    class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 text-slate-400 border border-slate-800 hover:text-slate-200 transition-all cursor-pointer">
-                                <i class="fa-solid fa-plane-up text-amber-400 mr-1"></i>Hava (<span id="live-flight-count">0</span>)
+                                    class="px-2.5 py-1 rounded-md text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer">
+                                Hava (<span id="live-flight-count">0</span>)
                             </button>
                         </div>
                     </div>
 
-                    <div id="map" class="w-full h-[500px] min-h-[500px] relative z-10"></div>
+                    <div id="map" class="w-full h-[540px] min-h-[540px] relative z-10"></div>
 
-                    <div class="px-4 py-2.5 bg-slate-950/90 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] text-slate-400">
+                    <div class="px-4 py-2 bg-[#0d0d10] border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
                         <div class="flex flex-wrap items-center gap-4">
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-industry text-cyan-400"></i> Üretim Fabrikası</span>
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-truck-fast text-emerald-400"></i> Kara Taşıma Aracı</span>
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-ship text-blue-400"></i> Deniz Konteyner Gemisi</span>
-                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-plane-up text-amber-400"></i> Hava Kargo Uçağı</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-sky-400"></span> Fabrika</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Kara Filosu</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400"></span> Deniz Gemisi</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Hava Kargo</span>
                         </div>
-                        <span class="text-[11px] text-cyan-300 font-medium">Araç veya fabrika simgelerine tıklayarak detay kartını açabilirsiniz</span>
+                        <span class="text-zinc-400">Detaylar için simgelerin üzerine gelin veya tıklayın</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Right 5 Columns: Resource Action Center & Operational Alert Feed -->
-            <div class="lg:col-span-5 flex flex-col gap-6">
-
-                <!-- Resource Optimization & Crisis Resolution Center -->
-                <div class="glass-panel rounded-2xl p-5 border border-cyan-500/30">
-                    <div class="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-800">
+            <!-- Right 4 Columns: Decision Support & Alert Feed -->
+            <div class="lg:col-span-4 flex flex-col gap-4">
+                <div class="surface-card rounded-xl p-4">
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-white/[0.08]">
                         <div>
-                            <h3 class="font-extrabold text-sm text-white flex items-center gap-2">
-                                <i class="fa-solid fa-compass-drafting text-cyan-400"></i>
-                                Kriz Çözüm ve Kaynak Dengeleme Merkezi
-                            </h3>
-                            <p class="text-[11px] text-slate-400">Tedarik gecikmeleri ve iş gücü darboğazları için önerilen sevkiyat ve görevlendirme kararları</p>
+                            <h3 class="font-semibold text-sm text-white">Kriz Çözüm Merkezi</h3>
+                            <p class="text-[11px] text-zinc-400 mt-0.5">Otomatik transfer ve personel önerileri</p>
                         </div>
-                        <span class="px-2.5 py-1 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-700 text-[10px] font-bold">
+                        <span class="px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-white/[0.08] text-[10px] font-mono">
                             Karar Destek
                         </span>
                     </div>
 
-                    <div id="prescriptive-action-container" class="space-y-4">
+                    <div id="prescriptive-action-container" class="space-y-3">
                         <!-- Populated by JS -->
                     </div>
                 </div>
 
-                <!-- Live Operations Notification Feed -->
-                <div class="glass-panel rounded-2xl p-4 border border-slate-800 flex-1">
-                    <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
-                        <h4 class="font-bold text-xs uppercase tracking-wider text-slate-200 flex items-center gap-2">
-                            <i class="fa-solid fa-bell text-amber-400"></i> Canlı Operasyon ve Sevkiyat Bildirimleri
+                <div class="surface-card rounded-xl p-4 flex-1 flex flex-col">
+                    <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-white/[0.08]">
+                        <h4 class="font-semibold text-xs uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+                            <i class="fa-solid fa-bell text-amber-400 text-[11px]"></i> Operasyon Bildirimleri
                         </h4>
-                        <span class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Anlık Akış
+                        <span class="text-[10px] text-emerald-400 font-medium flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Canlı
                         </span>
                     </div>
-                    <div id="recent-alerts-list" class="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
+                    <div id="recent-alerts-list" class="space-y-2 max-h-[260px] overflow-y-auto pr-1">
                         <!-- Populated by JS -->
                     </div>
                 </div>
-
             </div>
-
         </section>
 
-        <!-- ==================================================================== -->
-        <!-- FACTORY-BY-FACTORY RESOURCE, TRANSPORT FLEET & WORKFORCE MANAGEMENT  -->
-        <!-- ==================================================================== -->
-        <section class="space-y-4">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+        <!-- Factory Command Grid -->
+        <section class="space-y-3.5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 class="font-extrabold text-base text-white flex items-center gap-2">
-                        <i class="fa-solid fa-industry text-cyan-400"></i>
-                        Fabrika Bazlı Kaynak, Taşıma Filosu (Kara • Hava • Deniz) ve İşçi Yönetim Merkezi
-                    </h2>
-                    <p class="text-xs text-slate-400">
-                        Her fabrikanın altında o fabrikaya kaynak taşıyan kara, hava ve deniz araçları listelenir. Araçlara tıklayarak sevkiyat detaylarını görebilir, <strong>"İşçi Listesi"</strong> sekmesine tıklayarak fabrikanın personellerini inceleyip görevlendirebilirsiniz.
+                    <h2 class="font-semibold text-base text-white">Fabrika Bazlı Kaynak ve İş Gücü Yönetimi</h2>
+                    <p class="text-xs text-zinc-400 mt-0.5">
+                        Her fabrikanın altında taşıma araçları, personel kadrosu ve emniyet stokları yer alır.
                     </p>
                 </div>
-                <div class="flex items-center gap-2 text-xs">
-                    <button onclick="openSmartWorkforceMatcherModal()"
-                            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-extrabold text-xs flex items-center gap-2 shadow-lg cursor-pointer">
-                        <i class="fa-solid fa-users-viewfinder"></i> Fabrikalar Arası Akıllı Personel Takviyesi Planla
-                    </button>
-                </div>
+                <button onclick="openSmartWorkforceMatcherModal()"
+                        class="px-3.5 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer shadow-sm">
+                    <i class="fa-solid fa-users-viewfinder text-zinc-700"></i> Akıllı Personel Takviyesi Planla
+                </button>
             </div>
 
-            <!-- 3 Factory Comprehensive Columns (Tesis A Kocaeli, Tesis B Bursa, Tesis C İzmir) -->
-            <div id="plant-cards-container" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div id="plant-cards-container" class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <!-- Populated by JS -->
             </div>
         </section>
 
-        <!-- Active Transfer & Assignment Tracking Table -->
-        <section class="glass-panel rounded-2xl p-5 border border-slate-800">
-            <div class="flex flex-wrap items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-800">
+        <!-- Active Transfer & Assignment Ledger -->
+        <section class="surface-card rounded-xl p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-white/[0.08]">
                 <div>
-                    <h3 class="font-bold text-sm text-white flex items-center gap-2">
-                        <i class="fa-solid fa-route text-emerald-400"></i>
-                        Fabrikalar Arası Aktif Sevkiyat ve Personel Görevlendirme Kayıtları
-                    </h3>
-                    <p class="text-[11px] text-slate-400">Onaylanan malzeme transferleri ve geçici personel görevlendirmelerinin anlık durumu</p>
+                    <h3 class="font-semibold text-sm text-white">Aktif Sevkiyat ve Personel Görevlendirmeleri</h3>
+                    <p class="text-[11px] text-zinc-400 mt-0.5">Onaylanan malzeme transferleri ve geçici personel rotasyonları</p>
                 </div>
-                <span class="text-xs text-cyan-300 font-semibold">Canlı Operasyon Özeti</span>
+                <span class="text-[11px] font-mono text-zinc-500">Canlı Operasyon Kaydı</span>
             </div>
-            <div id="active-operations-summary" class="space-y-2.5">
+            <div id="active-operations-summary" class="space-y-2">
                 <!-- Populated by JS -->
             </div>
         </section>
-
     </main>
 
-    <!-- ========================================================= -->
-    <!-- MODAL 1: TRANSPORT VEHICLE DETAIL CARD (KARA/HAVA/DENİZ)  -->
-    <!-- ========================================================= -->
-    <div id="vehicle-detail-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="glass-panel rounded-2xl max-w-lg w-full p-5 border border-cyan-500/50 shadow-2xl">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                <div class="flex items-center gap-2.5">
-                    <div id="veh-modal-icon-box" class="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 text-lg">
+    <!-- MODAL 1: TRANSPORT VEHICLE DETAIL CARD -->
+    <div id="vehicle-detail-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-[#111114] rounded-xl max-w-lg w-full p-5 border border-white/[0.12] shadow-2xl">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-3.5 mb-4">
+                <div class="flex items-center gap-3">
+                    <div id="veh-modal-icon-box" class="w-9 h-9 rounded-lg bg-zinc-900 border border-white/[0.1] flex items-center justify-center text-sky-400">
                         <i id="veh-modal-icon" class="fa-solid fa-truck-fast"></i>
                     </div>
                     <div>
-                        <span id="veh-modal-category" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700">
+                        <span id="veh-modal-category" class="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-white/[0.08]">
                             KARA TAŞIMA ARACI
                         </span>
-                        <h3 id="veh-modal-title" class="font-extrabold text-base text-white mt-0.5">--</h3>
+                        <h3 id="veh-modal-title" class="font-semibold text-sm text-white mt-1">--</h3>
                     </div>
                 </div>
-                <button onclick="closeVehicleDetailModal()" class="text-slate-400 hover:text-white text-sm cursor-pointer">
-                    <i class="fa-solid fa-xmark"></i>
+                <button onclick="closeVehicleDetailModal()" class="w-7 h-7 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer">
+                    <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
 
-            <div id="veh-modal-body" class="space-y-3 text-xs">
-                <!-- Populated by JS -->
-            </div>
+            <div id="veh-modal-body" class="space-y-2.5 text-xs"></div>
 
-            <div class="flex justify-end gap-2 mt-5 pt-3 border-t border-slate-800">
-                <button onclick="closeVehicleDetailModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer">
+            <div class="flex justify-end gap-2 mt-5 pt-3.5 border-t border-white/[0.08]">
+                <button onclick="closeVehicleDetailModal()" class="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 text-xs font-medium cursor-pointer">
                     Kapat
                 </button>
-                <button id="veh-modal-focus-btn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer">
-                    <i class="fa-solid fa-location-crosshairs"></i> Haritada Araca Odaklan
+                <button id="veh-modal-focus-btn" class="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                    <i class="fa-solid fa-location-crosshairs"></i> Haritada Odaklan
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ========================================================= -->
-    <!-- MODAL 2: DIRECT WORKER DISPATCH MODAL                     -->
-    <!-- ========================================================= -->
-    <div id="worker-dispatch-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="glass-panel rounded-2xl max-w-md w-full p-5 border border-amber-500/50 shadow-2xl">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                <h3 class="font-bold text-sm text-white flex items-center gap-2">
-                    <i class="fa-solid fa-user-check text-amber-400"></i>
-                    Personel Fabrika Görevlendirme Emri
+    <!-- MODAL 2: DIRECT WORKER DISPATCH MODAL -->
+    <div id="worker-dispatch-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-[#111114] rounded-xl max-w-md w-full p-5 border border-white/[0.12] shadow-2xl">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-3.5 mb-4">
+                <h3 class="font-semibold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-user-check text-amber-400"></i> Personel Görevlendirme Emri
                 </h3>
-                <button onclick="closeDispatchModal()" class="text-slate-400 hover:text-white cursor-pointer">
-                    <i class="fa-solid fa-xmark"></i>
+                <button onclick="closeDispatchModal()" class="w-7 h-7 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer">
+                    <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
 
             <input type="hidden" id="dispatch-worker-id" />
 
             <div class="space-y-3 text-xs">
-                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                    <div id="dispatch-worker-name" class="font-bold text-sm text-white">--</div>
-                    <div id="dispatch-worker-meta" class="text-[11px] text-cyan-300 mt-0.5">--</div>
+                <div class="p-3 rounded-lg bg-zinc-900/90 border border-white/[0.08]">
+                    <div id="dispatch-worker-name" class="font-semibold text-sm text-white">--</div>
+                    <div id="dispatch-worker-meta" class="text-[11px] text-zinc-400 mt-0.5">--</div>
                 </div>
 
                 <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Sevk Edilecek Hedef Fabrika</label>
-                    <select id="dispatch-target-plant" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                    <label class="block text-zinc-400 mb-1.5 font-medium">Hedef Fabrika</label>
+                    <select id="dispatch-target-plant" class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 focus:outline-none focus:border-sky-500">
                         <option value="1">Tesis A — Kocaeli Otomotiv Montaj</option>
                         <option value="2">Tesis B — Bursa Güç Aktarma & Bileşen</option>
                         <option value="3">Tesis C — İzmir Sensör & Elektronik</option>
@@ -362,53 +322,51 @@
                 </div>
 
                 <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Görevlendirme Süresi (Gün)</label>
+                    <label class="block text-zinc-400 mb-1.5 font-medium">Görevlendirme Süresi (Gün)</label>
                     <input id="dispatch-duration-days" type="number" min="1" max="30" value="7"
-                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+                           class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 font-mono focus:outline-none focus:border-sky-500" />
                 </div>
 
                 <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Görevlendirme Nedeni</label>
+                    <label class="block text-zinc-400 mb-1.5 font-medium">Görevlendirme Nedeni</label>
                     <input id="dispatch-reason" type="text" value="Üretim hattı kapasite dengeleme ve uzman personel takviyesi"
-                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white" />
+                           class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 focus:outline-none focus:border-sky-500" />
                 </div>
             </div>
 
-            <div class="flex justify-end gap-2 mt-5 pt-3 border-t border-slate-800">
-                <button onclick="closeDispatchModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer">
+            <div class="flex justify-end gap-2 mt-5 pt-3.5 border-t border-white/[0.08]">
+                <button onclick="closeDispatchModal()" class="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 text-xs font-medium cursor-pointer">
                     İptal
                 </button>
-                <button onclick="confirmDirectWorkerDispatch()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer">
-                    <i class="fa-solid fa-paper-plane"></i> Görevlendirmeyi Onayla & Sevk Et
+                <button onclick="confirmDirectWorkerDispatch()" class="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+                    <i class="fa-solid fa-paper-plane"></i> Onayla & Sevk Et
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ========================================================= -->
-    <!-- MODAL 3: SMART WORKFORCE MATCHER MODAL                    -->
-    <!-- ========================================================= -->
-    <div id="smart-matcher-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-        <div class="glass-panel rounded-2xl max-w-xl w-full p-5 border border-amber-500/50 shadow-2xl">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+    <!-- MODAL 3: SMART WORKFORCE MATCHER MODAL -->
+    <div id="smart-matcher-modal" class="fixed inset-0 z-[999] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-[#111114] rounded-xl max-w-xl w-full p-5 border border-white/[0.12] shadow-2xl">
+            <div class="flex items-center justify-between border-b border-white/[0.08] pb-3.5 mb-4">
                 <div>
-                    <h3 class="font-extrabold text-sm text-white flex items-center gap-2">
+                    <h3 class="font-semibold text-sm text-white flex items-center gap-2">
                         <i class="fa-solid fa-users-viewfinder text-amber-400"></i>
-                        Fabrikalar Arası Akıllı Personel Takviyesi Planlayıcı
+                        Akıllı Personel Takviyesi Planlayıcı
                     </h3>
-                    <p class="text-[11px] text-slate-400 mt-0.5">
-                        İhtiyaç duyulan uzmanlığa göre diğer fabrikalardaki rotasyona uygun ve en düşük maliyetli personelleri önerir.
+                    <p class="text-[11px] text-zinc-400 mt-0.5">
+                        Rotasyona uygun ve en düşük maliyetli uzmanları kadro fazlası olan tesislerden eşleştirir.
                     </p>
                 </div>
-                <button onclick="closeSmartWorkforceMatcherModal()" class="text-slate-400 hover:text-white cursor-pointer">
-                    <i class="fa-solid fa-xmark"></i>
+                <button onclick="closeSmartWorkforceMatcherModal()" class="w-7 h-7 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer">
+                    <i class="fa-solid fa-xmark text-sm"></i>
                 </button>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                    <label class="block text-slate-300 font-semibold mb-1">Takviye İhtiyacı Olan Fabrika</label>
-                    <select id="wf-opt-plant" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                    <label class="block text-zinc-400 font-medium mb-1.5">Hedef Fabrika</label>
+                    <select id="wf-opt-plant" class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 focus:outline-none focus:border-sky-500">
                         <option value="1">Tesis A — Kocaeli Otomotiv Montaj</option>
                         <option value="2">Tesis B — Bursa Güç Aktarma & Bileşen</option>
                         <option value="3">Tesis C — İzmir Sensör & Elektronik</option>
@@ -416,48 +374,41 @@
                 </div>
 
                 <div>
-                    <label class="block text-slate-300 font-semibold mb-1">Aranan Uzmanlık Alanı</label>
-                    <select id="wf-opt-role" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                    <label class="block text-zinc-400 font-medium mb-1.5">Uzmanlık Alanı</label>
+                    <select id="wf-opt-role" class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 focus:outline-none focus:border-sky-500">
                         <option value="CNC Operatörü">CNC Operatörü</option>
-                        <option value="Robotik Kaynak Teknisyeni">Robotik Kaynak Teknisyeni</option>
-                        <option value="Kalite Güvence Uzmanı">Kalite Güvence Uzmanı</option>
-                        <option value="Elektronik SMD Teknisyeni">Elektronik SMD Teknisyeni</option>
-                        <option value="PLC & Otomasyon Uzmanı">PLC & Otomasyon Uzmanı</option>
                         <option value="Tümü">Tüm Uzmanlık Alanları</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-slate-300 font-semibold mb-1">Talep Edilen Personel Sayısı</label>
+                    <label class="block text-zinc-400 font-medium mb-1.5">Talep Edilen Kişi Sayısı</label>
                     <input id="wf-opt-count" type="number" min="1" max="6" value="3"
-                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+                           class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 font-mono focus:outline-none focus:border-sky-500" />
                 </div>
 
                 <div>
-                    <label class="block text-slate-300 font-semibold mb-1">Görevlendirme Süresi (Gün)</label>
+                    <label class="block text-zinc-400 font-medium mb-1.5">Görevlendirme Süresi (Gün)</label>
                     <input id="wf-opt-days" type="number" min="1" max="30" value="7"
-                           class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+                           class="w-full bg-zinc-900 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100 font-mono focus:outline-none focus:border-sky-500" />
                 </div>
             </div>
 
             <button onclick="runWorkforceOptimizer()"
-                    class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer mt-4">
+                    class="w-full py-2.5 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer mt-4">
                 <i class="fa-solid fa-magnifying-glass-chart"></i> Uygun Personelleri Listele
             </button>
 
-            <div id="wf-opt-results" class="mt-4 pt-3 border-t border-slate-800 space-y-2 max-h-[260px] overflow-y-auto">
-                <div class="text-xs text-slate-500 text-center py-3">
+            <div id="wf-opt-results" class="mt-4 pt-3 border-t border-white/[0.08] space-y-2 max-h-[260px] overflow-y-auto">
+                <div class="text-xs text-zinc-500 text-center py-3">
                     Kriterleri seçip yukarıdaki butona tıklayarak uygun adayları görüntüleyebilirsiniz.
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Live Real-Time Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
-    <!-- Enterprise App Engine -->
-    <script src="/js/app.js?v=8"></script>
+    <script src="/js/app.js?v=10"></script>
 </body>
 </html>

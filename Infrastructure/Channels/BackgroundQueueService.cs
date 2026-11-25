@@ -6,16 +6,16 @@ namespace ERPES.ControlTower.Infrastructure.Channels;
 
 public class BackgroundQueueService : BackgroundService
 {
-    private readonly ChannelReader<TelemetryDto> _channelReader;
+    private readonly IngestionChannel _ingestionChannel;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BackgroundQueueService> _logger;
 
     public BackgroundQueueService(
-        ChannelReader<TelemetryDto> channelReader,
+        IngestionChannel ingestionChannel,
         IServiceScopeFactory scopeFactory,
         ILogger<BackgroundQueueService> logger)
     {
-        _channelReader = channelReader;
+        _ingestionChannel = ingestionChannel;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -26,17 +26,26 @@ public class BackgroundQueueService : BackgroundService
 
         try
         {
-            await foreach (var telemetry in _channelReader.ReadAllAsync(stoppingToken))
+            await foreach (var telemetry in _ingestionChannel.Reader.ReadAllAsync(stoppingToken))
             {
+                await _ingestionChannel.ProcessingLock.WaitAsync(stoppingToken);
                 try
                 {
                     using var scope = _scopeFactory.CreateScope();
                     var decisionEngine = scope.ServiceProvider.GetRequiredService<IPrescriptiveDecisionEngine>();
                     await decisionEngine.ProcessTelemetryAsync(telemetry, stoppingToken);
                 }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing telemetry item from IngestionChannel.");
+                }
+                finally
+                {
+                    _ingestionChannel.ProcessingLock.Release();
                 }
             }
         }
