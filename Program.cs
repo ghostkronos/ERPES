@@ -48,7 +48,8 @@ builder.Services.AddSignalR()
 // 5. Domain Services & Background Queue Consumer
 builder.Services.AddHttpClient<LogisticsRadarService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(4);
+    client.Timeout = TimeSpan.FromSeconds(5);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("ERPES-ControlTower/1.0");
 });
 builder.Services.AddScoped<IPrescriptiveDecisionEngine, PrescriptiveDecisionEngine>();
 builder.Services.AddHostedService<BackgroundQueueService>();

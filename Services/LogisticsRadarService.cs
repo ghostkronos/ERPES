@@ -95,83 +95,26 @@ public class LogisticsRadarService
         {
             if ((DateTime.UtcNow - _lastOpenSkyFetch).TotalSeconds > 15 || _cachedAircraft.Count == 0)
             {
-                try
+                var liveList = await TryFetchOpenSkyAsync();
+                if (liveList.Count == 0)
                 {
-                    string url = "https://opensky-network.org/api/states/all?lamin=38.0&lomin=26.0&lamax=41.5&lomax=30.8";
-                    var response = await _httpClient.GetAsync(url);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var json = await response.Content.ReadAsStringAsync();
-                        using var doc = JsonDocument.Parse(json);
-                        if (doc.RootElement.TryGetProperty("states", out var statesElement) && statesElement.ValueKind == JsonValueKind.Array)
-                        {
-                            var liveList = new List<AircraftPositionDto>();
-                            int count = 0;
-
-                            foreach (var state in statesElement.EnumerateArray())
-                            {
-                                if (count >= 12) break;
-
-                                string icao = state[0].GetString() ?? "N/A";
-                                string callsign = (state[1].GetString() ?? "").Trim();
-                                string country = state[2].GetString() ?? "Türkiye";
-                                double? lon = state[5].ValueKind == JsonValueKind.Number ? state[5].GetDouble() : null;
-                                double? lat = state[6].ValueKind == JsonValueKind.Number ? state[6].GetDouble() : null;
-                                double alt = state[7].ValueKind == JsonValueKind.Number ? state[7].GetDouble() : 3500;
-                                double velMs = state[9].ValueKind == JsonValueKind.Number ? state[9].GetDouble() : 180;
-                                double heading = state[10].ValueKind == JsonValueKind.Number ? state[10].GetDouble() : 90;
-
-                                if (lat.HasValue && lon.HasValue && !string.IsNullOrWhiteSpace(callsign))
-                                {
-                                    string assignedPlantCode = lat.Value < 39.2
-                                        ? "PLANT-C"
-                                        : (lat.Value < 40.45 ? "PLANT-B" : "PLANT-A");
-
-                                    string assignedPlantName = assignedPlantCode == "PLANT-C"
-                                        ? "Tesis C — İzmir Sensör & Elektronik"
-                                        : (assignedPlantCode == "PLANT-B"
-                                            ? "Tesis B — Bursa Güç Aktarma & Bileşen"
-                                            : "Tesis A — Kocaeli Otomotiv Montaj");
-
-                                    liveList.Add(new AircraftPositionDto
-                                    {
-                                        Icao24 = icao,
-                                        Callsign = callsign,
-                                        OriginCountry = country,
-                                        Latitude = lat.Value,
-                                        Longitude = lon.Value,
-                                        AltitudeMeters = Math.Round(alt, 0),
-                                        VelocityKnots = Math.Round(velMs * 1.94384, 0),
-                                        Heading = Math.Round(heading, 0),
-                                        CargoType = "Endüstriyel Yedek Parça & Hava Kargo",
-                                        Route = $"{country} ➔ Marmara / Ege Hava Koridoru",
-                                        OriginAirport = $"{country} Uluslararası Hub",
-                                        DestinationAirport = assignedPlantCode == "PLANT-C" ? "İzmir Adnan Menderes (ADB)" : "Sabiha Gökçen (SAW)",
-                                        TargetPlantCode = assignedPlantCode,
-                                        TargetPlantName = assignedPlantName,
-                                        PilotOrOperator = "Hava Kargo Operasyon Filosu",
-                                        Eta = "Zamanında (Uçuşta)",
-                                        Status = "OnTime",
-                                        IsLiveAdsb = true
-                                    });
-                                    count++;
-                                }
-                            }
-
-                            if (liveList.Count > 0)
-                            {
-                                _cachedAircraft = liveList;
-                                _lastOpenSkyFetch = DateTime.UtcNow;
-                                _flightSourceStatus = $"Canlı Hava Kargo Radarı ({liveList.Count + 3} Uçak)";
-                            }
-                        }
-                    }
+                    liveList = await TryFetchAdsbLolAsync();
                 }
-                catch (Exception ex)
+
+                if (liveList.Count > 0)
                 {
-                    _logger.LogWarning("Live aviation feed fallback active: {Msg}", ex.Message);
-                    _flightSourceStatus = "Canlı Hava Kargo Radarı Aktif";
+                    _cachedAircraft = liveList;
+                    _lastOpenSkyFetch = DateTime.UtcNow;
+                    _flightSourceStatus = $"Canlı Hava Kargo Radarı ({liveList.Count + 3} Uçak)";
+                }
+                else
+                {
+                    // Avoid hammering rate-limited endpoints on every poll
+                    _lastOpenSkyFetch = DateTime.UtcNow;
+                    if (_cachedAircraft.Count == 0)
+                    {
+                        _flightSourceStatus = "Hava Kargo Radarı (Simülasyon Modu)";
+                    }
                 }
             }
 
@@ -264,6 +207,149 @@ public class LogisticsRadarService
 
         result.AddRange(cachedSnapshot);
         return (result, sourceStatus);
+    }
+
+    private static AircraftPositionDto CreateLiveAircraftDto(
+        string icao,
+        string callsign,
+        string country,
+        double lat,
+        double lon,
+        double altMeters,
+        double velocityKnots,
+        double heading)
+    {
+        string assignedPlantCode = lat < 39.2
+            ? "PLANT-C"
+            : (lat < 40.45 ? "PLANT-B" : "PLANT-A");
+
+        string assignedPlantName = assignedPlantCode == "PLANT-C"
+            ? "Tesis C — İzmir Sensör & Elektronik"
+            : (assignedPlantCode == "PLANT-B"
+                ? "Tesis B — Bursa Güç Aktarma & Bileşen"
+                : "Tesis A — Kocaeli Otomotiv Montaj");
+
+        return new AircraftPositionDto
+        {
+            Icao24 = icao,
+            Callsign = callsign,
+            OriginCountry = country,
+            Latitude = lat,
+            Longitude = lon,
+            AltitudeMeters = Math.Round(altMeters, 0),
+            VelocityKnots = Math.Round(velocityKnots, 0),
+            Heading = Math.Round(heading, 0),
+            CargoType = "Endüstriyel Yedek Parça & Hava Kargo",
+            Route = $"{country} ➔ Marmara / Ege Hava Koridoru",
+            OriginAirport = $"{country} Uluslararası Hub",
+            DestinationAirport = assignedPlantCode == "PLANT-C" ? "İzmir Adnan Menderes (ADB)" : "Sabiha Gökçen (SAW)",
+            TargetPlantCode = assignedPlantCode,
+            TargetPlantName = assignedPlantName,
+            PilotOrOperator = "Hava Kargo Operasyon Filosu",
+            Eta = "Zamanında (Uçuşta)",
+            Status = "OnTime",
+            IsLiveAdsb = true
+        };
+    }
+
+    private async Task<List<AircraftPositionDto>> TryFetchOpenSkyAsync()
+    {
+        var liveList = new List<AircraftPositionDto>();
+        try
+        {
+            const string url = "https://opensky-network.org/api/states/all?lamin=38.0&lomin=26.0&lamax=41.5&lomax=30.8";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("OpenSky returned HTTP {Status}; falling back to ADSB.lol.", (int)response.StatusCode);
+                return liveList;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("states", out var statesElement) || statesElement.ValueKind != JsonValueKind.Array)
+                return liveList;
+
+            foreach (var state in statesElement.EnumerateArray())
+            {
+                if (liveList.Count >= 12) break;
+
+                string icao = state[0].GetString() ?? "N/A";
+                string callsign = (state[1].GetString() ?? "").Trim();
+                string country = state[2].GetString() ?? "Türkiye";
+                double? lon = state[5].ValueKind == JsonValueKind.Number ? state[5].GetDouble() : null;
+                double? lat = state[6].ValueKind == JsonValueKind.Number ? state[6].GetDouble() : null;
+                double alt = state[7].ValueKind == JsonValueKind.Number ? state[7].GetDouble() : 3500;
+                double velMs = state[9].ValueKind == JsonValueKind.Number ? state[9].GetDouble() : 180;
+                double heading = state[10].ValueKind == JsonValueKind.Number ? state[10].GetDouble() : 90;
+
+                if (lat.HasValue && lon.HasValue && !string.IsNullOrWhiteSpace(callsign))
+                {
+                    liveList.Add(CreateLiveAircraftDto(icao, callsign, country, lat.Value, lon.Value, alt, velMs * 1.94384, heading));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("OpenSky fetch failed ({Msg}); falling back to ADSB.lol.", ex.Message);
+        }
+        return liveList;
+    }
+
+    private async Task<List<AircraftPositionDto>> TryFetchAdsbLolAsync()
+    {
+        var liveList = new List<AircraftPositionDto>();
+        try
+        {
+            const string url = "https://api.adsb.lol/v2/point/39.75/28.25/200";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("ADSB.lol returned HTTP {Status}.", (int)response.StatusCode);
+                return liveList;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("ac", out var acElement) || acElement.ValueKind != JsonValueKind.Array)
+                return liveList;
+
+            foreach (var ac in acElement.EnumerateArray())
+            {
+                if (liveList.Count >= 12) break;
+
+                string icao = ac.TryGetProperty("hex", out var hexEl) ? (hexEl.GetString() ?? "N/A") : "N/A";
+                string callsign = ac.TryGetProperty("flight", out var flEl) ? (flEl.GetString() ?? "").Trim() : "";
+                if (string.IsNullOrWhiteSpace(callsign)) continue;
+
+                if (!ac.TryGetProperty("lat", out var latEl) || latEl.ValueKind != JsonValueKind.Number) continue;
+                if (!ac.TryGetProperty("lon", out var lonEl) || lonEl.ValueKind != JsonValueKind.Number) continue;
+
+                double lat = latEl.GetDouble();
+                double lon = lonEl.GetDouble();
+                if (lat < 38.0 || lat > 41.5 || lon < 26.0 || lon > 30.8) continue;
+
+                double altMeters = 3500;
+                if (ac.TryGetProperty("alt_baro", out var altEl) && altEl.ValueKind == JsonValueKind.Number)
+                {
+                    altMeters = altEl.GetDouble() * 0.3048;
+                }
+
+                double speedKnots = ac.TryGetProperty("gs", out var gsEl) && gsEl.ValueKind == JsonValueKind.Number
+                    ? gsEl.GetDouble()
+                    : 320;
+                double heading = ac.TryGetProperty("track", out var trkEl) && trkEl.ValueKind == JsonValueKind.Number
+                    ? trkEl.GetDouble()
+                    : 90;
+
+                liveList.Add(CreateLiveAircraftDto(icao, callsign, "Türkiye", lat, lon, altMeters, speedKnots, heading));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("ADSB.lol fetch failed: {Msg}", ex.Message);
+        }
+        return liveList;
     }
 
     private List<VesselPositionDto> GetMaritimeVessels(
